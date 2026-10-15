@@ -1,0 +1,5 @@
+unit: signup
+bindings:
+  - {type: route-declaration, name: "GET /signup", source_loc: "src/App.tsx:18", target: "SignUp", must_appear_in_target: true, notes: "Browser route."}
+  - {type: route-declaration, name: "POST account form", source_loc: "src/pages/SignUp.tsx:50", target: "handleSubmit", must_appear_in_target: true, notes: "Client-only onboarding form."}
+runtime_config: []

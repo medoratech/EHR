@@ -1,0 +1,12 @@
+unit: signup
+side_effects:
+  - {source_loc: "src/pages/SignUp.tsx:21", effect: "Navigates to the selected role dashboard after successful local validation.", must_preserve: true}
+  - {source_loc: "src/pages/SignUp.tsx:23", effect: "Sets a visible password mismatch error and stops navigation.", must_preserve: true}
+branches:
+  - {source_loc: "src/pages/SignUp.tsx:21", condition: "password differs from confirmation", behavior: "Show mismatch error and do not navigate.", must_preserve: true}
+  - {source_loc: "src/pages/SignUp.tsx:50", condition: "required fields, terms, or minLength constraint fail", behavior: "Browser validation prevents submission.", must_preserve: true}
+error_paths:
+  - {source_loc: "src/pages/SignUp.tsx:23", trigger: "password and confirmation differ", outcome: "Inline 'Passwords do not match' feedback.", contract: "No navigation; visible validation message.", must_preserve: true}
+concurrency:
+  model: event-loop
+  tx_boundary: {source_loc: "none", scope: "No transaction; account data is not persisted.", isolation: "none", must_preserve: false}

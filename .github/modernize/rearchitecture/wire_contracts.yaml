@@ -1,0 +1,90 @@
+contracts:
+  - name: landing-page-route
+    unit: landing
+    type: rest
+    stability: frozen
+    source_loc: "src/App.tsx:15"
+    contract: {method: "GET", path: "/", request: "none", response: "Landing page HTML rendered by SPA", error: "unknown paths redirect to /", auth: "none"}
+    target_contract: {method: "React route element Landing()", notes: "Preserve root route and in-page navigation anchors."}
+    semantic_divergence: []
+  - name: get-started-route
+    unit: get_started
+    type: rest
+    stability: frozen
+    source_loc: "src/App.tsx:16"
+    contract: {method: "GET", path: "/get-started", request: "none", response: "Onboarding choice page", error: "unknown paths redirect to /", auth: "none"}
+    target_contract: {method: "React route element GetStarted()", notes: "Choice buttons navigate to /signup and /login."}
+    semantic_divergence: []
+  - name: login-route
+    unit: login
+    type: rest
+    stability: frozen
+    source_loc: "src/App.tsx:17"
+    contract: {method: "GET/POST", path: "/login", request: "email and required password form fields", response: "navigate to role dashboard", error: "browser required-field validation; unknown email defaults to /patient", auth: "demo-only client routing"}
+    target_contract: {method: "React route element Login()", notes: "Preserve demo-account email mapping and fallback."}
+    semantic_divergence: []
+  - name: signup-route
+    unit: signup
+    type: rest
+    stability: frozen
+    source_loc: "src/App.tsx:18"
+    contract: {method: "GET/POST", path: "/signup", request: "name, organisation, email, role, password, confirmation, terms", response: "navigate to selected role dashboard", error: "password mismatch message; browser required/minLength validation", auth: "none"}
+    target_contract: {method: "React route element SignUp()", notes: "Preserve selected-role destination and mismatch branch."}
+    semantic_divergence: []
+  - name: patient-dashboard-route
+    unit: patient_dashboard
+    type: rest
+    stability: frozen
+    source_loc: "src/App.tsx:26"
+    contract: {method: "GET", path: "/patient", request: "none", response: "patient dashboard over current synthetic patient", error: "missing data renders empty/placeholder values", auth: "none"}
+    target_contract: {method: "React route element PatientDashboard()", notes: "Preserve current patient ID and local action feedback."}
+    semantic_divergence: []
+  - name: doctor-dashboard-route
+    unit: doctor_dashboard
+    type: rest
+    stability: frozen
+    source_loc: "src/App.tsx:27"
+    contract: {method: "GET", path: "/doctor", request: "none", response: "doctor dashboard", error: "empty table states", auth: "none"}
+    target_contract: {method: "React route element DoctorDashboard()", notes: "Preserve urgency sorting, filters, approvals, and delegation feedback."}
+    semantic_divergence: []
+  - name: staff-dashboard-route
+    unit: staff_dashboard
+    type: rest
+    stability: frozen
+    source_loc: "src/App.tsx:28"
+    contract: {method: "GET", path: "/staff", request: "none", response: "staff dashboard", error: "empty task/table states", auth: "none"}
+    target_contract: {method: "React route element StaffDashboard()", notes: "Preserve local task status transitions."}
+    semantic_divergence: []
+  - name: laboratory-dashboard-route
+    unit: laboratory_dashboard
+    type: rest
+    stability: frozen
+    source_loc: "src/App.tsx:29"
+    contract: {method: "GET", path: "/laboratory", request: "none", response: "laboratory dashboard", error: "empty upload state", auth: "none"}
+    target_contract: {method: "React route element LaboratoryDashboard()", notes: "Preserve status analytics and upload feedback."}
+    semantic_divergence: []
+  - name: pharmacy-dashboard-route
+    unit: pharmacy_dashboard
+    type: rest
+    stability: frozen
+    source_loc: "src/App.tsx:30"
+    contract: {method: "GET", path: "/pharmacy", request: "none", response: "pharmacy dashboard", error: "empty inventory/prescription states", auth: "none"}
+    target_contract: {method: "React route element PharmacyDashboard()", notes: "Preserve stock thresholds, expiry labels, dispense, and reorder feedback."}
+    semantic_divergence: []
+  - name: reception-dashboard-route
+    unit: reception_dashboard
+    type: rest
+    stability: frozen
+    source_loc: "src/App.tsx:31"
+    contract: {method: "GET", path: "/reception", request: "none", response: "reception dashboard", error: "empty appointment/invoice states", auth: "none"}
+    target_contract: {method: "React route element ReceptionistDashboard()", notes: "Preserve time-based flow and local approval/payment/print state."}
+    semantic_divergence: []
+  - name: admin-dashboard-route
+    unit: admin_panel
+    type: rest
+    stability: frozen
+    source_loc: "src/App.tsx:32"
+    contract: {method: "GET", path: "/admin", request: "none", response: "admin dashboard", error: "empty user/table states", auth: "none"}
+    target_contract: {method: "React route element AdminPanel()", notes: "Preserve role filtering and local access-save feedback."}
+    semantic_divergence: []
+

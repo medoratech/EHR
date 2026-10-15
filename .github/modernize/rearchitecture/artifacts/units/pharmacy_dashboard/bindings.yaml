@@ -1,0 +1,4 @@
+unit: pharmacy_dashboard
+bindings:
+  - {type: route-declaration, name: "GET /pharmacy", source_loc: "src/App.tsx:30", target: "PharmacyDashboard", must_appear_in_target: true, notes: "Wrapped by AppShell."}
+runtime_config: []

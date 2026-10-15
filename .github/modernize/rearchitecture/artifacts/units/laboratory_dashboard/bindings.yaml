@@ -1,0 +1,4 @@
+unit: laboratory_dashboard
+bindings:
+  - {type: route-declaration, name: "GET /laboratory", source_loc: "src/App.tsx:29", target: "LaboratoryDashboard", must_appear_in_target: true, notes: "Wrapped by AppShell."}
+runtime_config: []

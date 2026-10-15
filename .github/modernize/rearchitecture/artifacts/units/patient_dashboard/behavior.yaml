@@ -1,0 +1,12 @@
+unit: patient_dashboard
+side_effects:
+  - {source_loc: "src/pages/PatientDashboard.tsx:168", effect: "Stores symptom text, analysis state, appointment cancellation state, and notification filter in component state.", must_preserve: true}
+  - {source_loc: "src/pages/PatientDashboard.tsx:319", effect: "Marks an appointment as locally cancelled through visible status feedback.", must_preserve: true}
+branches:
+  - {source_loc: "src/pages/PatientDashboard.tsx:174", condition: "unreadOnly is enabled", behavior: "Show only unread notifications.", must_preserve: true}
+  - {source_loc: "src/pages/PatientDashboard.tsx:172", condition: "symptom analysis has been requested", behavior: "Show symptom matches; otherwise show the empty analysis state.", must_preserve: true}
+  - {source_loc: "src/pages/PatientDashboard.tsx:207", condition: "no upcoming appointments", behavior: "Show booking prompt instead of appointment list.", must_preserve: true}
+error_paths: []
+concurrency:
+  model: event-loop
+  tx_boundary: {source_loc: "none", scope: "Synchronous reads from in-memory records and local component updates.", isolation: "none", must_preserve: false}

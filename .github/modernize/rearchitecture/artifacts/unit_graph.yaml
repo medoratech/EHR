@@ -1,0 +1,218 @@
+units:
+  - name: landing
+    trigger: page
+    trigger_detail: "GET /"
+    source_anchors:
+      - path: src/App.tsx
+        line: 15
+      - path: src/pages/Landing.tsx
+        line: 606
+    exported_signature:
+      - method: "ReactElement Landing()"
+        source_loc: "src/pages/Landing.tsx:606"
+        stability: frozen
+    dynamic_entrypoints: []
+    depends_on: []
+    shared_refs:
+      - module: role_navigation
+        used_fields: [navLinks, solutions]
+      - module: motion_utilities
+        used_fields: [useParallax, Parallax]
+
+  - name: get_started
+    trigger: page
+    trigger_detail: "GET /get-started"
+    source_anchors:
+      - path: src/App.tsx
+        line: 16
+      - path: src/pages/GetStarted.tsx
+        line: 22
+    exported_signature:
+      - method: "ReactElement GetStarted()"
+        source_loc: "src/pages/GetStarted.tsx:22"
+        stability: frozen
+    dynamic_entrypoints: []
+    depends_on: []
+    shared_refs:
+      - module: auth_layout
+        used_fields: [AuthLayout, RoleOption]
+
+  - name: login
+    trigger: page
+    trigger_detail: "GET /login; POST sign-in form"
+    source_anchors:
+      - path: src/App.tsx
+        line: 17
+      - path: src/pages/Login.tsx
+        line: 10
+    exported_signature:
+      - method: "ReactElement Login()"
+        source_loc: "src/pages/Login.tsx:10"
+        stability: frozen
+    dynamic_entrypoints: []
+    depends_on: []
+    shared_refs:
+      - module: auth_layout
+        used_fields: [AuthLayout]
+      - module: role_navigation
+        used_fields: [demoAccounts, dashboardForEmail]
+
+  - name: signup
+    trigger: page
+    trigger_detail: "GET /signup; POST account form"
+    source_anchors:
+      - path: src/App.tsx
+        line: 18
+      - path: src/pages/SignUp.tsx
+        line: 12
+    exported_signature:
+      - method: "ReactElement SignUp()"
+        source_loc: "src/pages/SignUp.tsx:12"
+        stability: frozen
+    dynamic_entrypoints: []
+    depends_on: []
+    shared_refs:
+      - module: auth_layout
+        used_fields: [AuthLayout, RoleSelector, RoleOption]
+      - module: role_navigation
+        used_fields: [roleOptions]
+
+  - name: patient_dashboard
+    trigger: page
+    trigger_detail: "GET /patient"
+    source_anchors:
+      - path: src/App.tsx
+        line: 26
+      - path: src/pages/PatientDashboard.tsx
+        line: 164
+    exported_signature:
+      - method: "ReactElement PatientDashboard()"
+        source_loc: "src/pages/PatientDashboard.tsx:164"
+        stability: frozen
+    dynamic_entrypoints: []
+    depends_on: []
+    shared_refs:
+      - module: clinical_data_access
+        used_fields: [currentPatient, currentPatientAppointments, currentPatientPrescriptions, currentPatientLabs, currentPatientDiet, currentPatientGlucose, latestVitals, notifications]
+      - module: format_utilities
+        used_fields: [formatDate, formatDay, formatTime]
+
+  - name: doctor_dashboard
+    trigger: page
+    trigger_detail: "GET /doctor"
+    source_anchors:
+      - path: src/App.tsx
+        line: 27
+      - path: src/pages/DoctorDashboard.tsx
+        line: 34
+    exported_signature:
+      - method: "ReactElement DoctorDashboard()"
+        source_loc: "src/pages/DoctorDashboard.tsx:34"
+        stability: frozen
+    dynamic_entrypoints: []
+    depends_on: []
+    shared_refs:
+      - module: clinical_data_access
+        used_fields: [appointmentsFor, patients, problemSummaryFor, tasks, users, vitals, newLabReports, openTasks, consultationVolume]
+      - module: ui_primitives
+        used_fields: [PageHeader, MetricTile, DataTable, StatusPill]
+
+  - name: staff_dashboard
+    trigger: page
+    trigger_detail: "GET /staff"
+    source_anchors:
+      - path: src/App.tsx
+        line: 28
+      - path: src/pages/StaffDashboard.tsx
+        line: 34
+    exported_signature:
+      - method: "ReactElement StaffDashboard()"
+        source_loc: "src/pages/StaffDashboard.tsx:34"
+        stability: frozen
+    dynamic_entrypoints: []
+    depends_on: []
+    shared_refs:
+      - module: clinical_data_access
+        used_fields: [tasks, patients, latestVitals, getPatientName, draftDischarges]
+      - module: format_utilities
+        used_fields: [formatDate, formatDay, humanize]
+
+  - name: laboratory_dashboard
+    trigger: page
+    trigger_detail: "GET /laboratory"
+    source_anchors:
+      - path: src/App.tsx
+        line: 29
+      - path: src/pages/LaboratoryDashboard.tsx
+        line: 33
+    exported_signature:
+      - method: "ReactElement LaboratoryDashboard()"
+        source_loc: "src/pages/LaboratoryDashboard.tsx:33"
+        stability: frozen
+    dynamic_entrypoints: []
+    depends_on: []
+    shared_refs:
+      - module: clinical_data_access
+        used_fields: [labTests, labStatusCounts, labCategoryCounts, newLabReports, testsForBooking, getPatientName]
+      - module: ui_primitives
+        used_fields: [PageHeader, MetricTile, DataTable, StatusPill]
+
+  - name: pharmacy_dashboard
+    trigger: page
+    trigger_detail: "GET /pharmacy"
+    source_anchors:
+      - path: src/App.tsx
+        line: 30
+      - path: src/pages/PharmacyDashboard.tsx
+        line: 25
+    exported_signature:
+      - method: "ReactElement PharmacyDashboard()"
+        source_loc: "src/pages/PharmacyDashboard.tsx:25"
+        stability: frozen
+    dynamic_entrypoints: []
+    depends_on: []
+    shared_refs:
+      - module: clinical_data_access
+        used_fields: [inventory, prescriptions, invoices, getPatientName]
+      - module: format_utilities
+        used_fields: [formatCurrency, formatDate]
+
+  - name: reception_dashboard
+    trigger: page
+    trigger_detail: "GET /reception"
+    source_anchors:
+      - path: src/App.tsx
+        line: 31
+      - path: src/pages/ReceptionistDashboard.tsx
+        line: 23
+    exported_signature:
+      - method: "ReactElement ReceptionistDashboard()"
+        source_loc: "src/pages/ReceptionistDashboard.tsx:23"
+        stability: frozen
+    dynamic_entrypoints: []
+    depends_on: []
+    shared_refs:
+      - module: clinical_data_access
+        used_fields: [appointments, appointmentsFor, pendingAppointments, invoices, draftDischarges, getPatientName, todayKey]
+      - module: format_utilities
+        used_fields: [formatCurrency, formatDate]
+
+  - name: admin_panel
+    trigger: page
+    trigger_detail: "GET /admin"
+    source_anchors:
+      - path: src/App.tsx
+        line: 32
+      - path: src/pages/AdminPanel.tsx
+        line: 63
+    exported_signature:
+      - method: "ReactElement AdminPanel()"
+        source_loc: "src/pages/AdminPanel.tsx:63"
+        stability: frozen
+    dynamic_entrypoints: []
+    depends_on: []
+    shared_refs:
+      - module: clinical_data_access
+        used_fields: [appointments, auditEvents, labTests, patients, prescriptions, recordVolume, revenueCollected, revenueOutstanding, systemConfig, userRoleCounts, users]
+      - module: ui_primitives
+        used_fields: [PageHeader, MetricTile, DataTable, StatusPill]

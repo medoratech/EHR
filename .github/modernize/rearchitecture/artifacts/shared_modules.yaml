@@ -1,0 +1,115 @@
+modules:
+  - name: role_navigation
+    kind: config
+    source_loc: "src/components/layout/roles.ts:12"
+    used_by_units: [landing, login, signup]
+    fields:
+      - {name: navLinks, type: "LandingNavLink[]"}
+      - {name: solutions, type: "LandingSolution[]"}
+      - {name: demoAccounts, type: "DemoAccount[]"}
+      - {name: dashboardForEmail, type: "(email: string) => string"}
+      - {name: roleOptions, type: "RoleOption[]"}
+    god_class: false
+    split_candidate: false
+    migration_strategy: copy
+    notes: "Shared route and role-selection configuration; keep route destinations consistent."
+
+  - name: auth_layout
+    kind: base-class
+    source_loc: "src/components/layout/AuthLayout.tsx:47"
+    used_by_units: [get_started, login, signup]
+    fields:
+      - {name: AuthLayout, type: "React component"}
+      - {name: RoleSelector, type: "React component"}
+      - {name: RoleOption, type: "interface"}
+    god_class: false
+    split_candidate: false
+    migration_strategy: wrap
+    notes: "Shared authentication/onboarding shell and role selector."
+
+  - name: clinical_data_access
+    kind: god-class
+    source_loc: "src/data/api.ts:1"
+    used_by_units: [patient_dashboard, doctor_dashboard, staff_dashboard, laboratory_dashboard, pharmacy_dashboard, reception_dashboard, admin_panel]
+    fields:
+      - {name: currentPatient, type: "Patient"}
+      - {name: currentPatientAppointments, type: "Appointment[]"}
+      - {name: currentPatientPrescriptions, type: "Prescription[]"}
+      - {name: currentPatientLabs, type: "LabTest[]"}
+      - {name: currentPatientDiet, type: "DietPlan"}
+      - {name: currentPatientGlucose, type: "GlucoseReading[]"}
+      - {name: latestVitals, type: "(patientId: string) => Vitals | undefined"}
+      - {name: notifications, type: "Notification[]"}
+      - {name: appointmentsFor, type: "(date?: string) => Appointment[]"}
+      - {name: patients, type: "Patient[]"}
+      - {name: problemSummaryFor, type: "(patientId: string) => ProblemSummary | undefined"}
+      - {name: tasks, type: "Task[]"}
+      - {name: users, type: "User[]"}
+      - {name: vitals, type: "Vitals[]"}
+      - {name: newLabReports, type: "LabTest[]"}
+      - {name: openTasks, type: "Task[]"}
+      - {name: consultationVolume, type: "BarDatum[]"}
+      - {name: labTests, type: "LabTest[]"}
+      - {name: labStatusCounts, type: "Record<string, number>"}
+      - {name: labCategoryCounts, type: "Record<string, number>"}
+      - {name: testsForBooking, type: "BookableTest[]"}
+      - {name: getPatientName, type: "(id: string) => string"}
+      - {name: inventory, type: "InventoryItem[]"}
+      - {name: prescriptions, type: "Prescription[]"}
+      - {name: invoices, type: "Invoice[]"}
+      - {name: draftDischarges, type: "DischargeSummary[]"}
+      - {name: todayKey, type: "() => string"}
+      - {name: appointments, type: "Appointment[]"}
+      - {name: pendingAppointments, type: "Appointment[]"}
+      - {name: auditEvents, type: "AuditEvent[]"}
+      - {name: recordVolume, type: "BarDatum[]"}
+      - {name: revenueCollected, type: "number"}
+      - {name: revenueOutstanding, type: "number"}
+      - {name: systemConfig, type: "SystemConfigEntry[]"}
+      - {name: userRoleCounts, type: "Record<string, number>"}
+    god_class: true
+    split_candidate: true
+    migration_strategy: split
+    notes: "Single read seam combines repositories, selectors, aggregates, and formatting-adjacent queries across all dashboards."
+
+  - name: format_utilities
+    kind: utility
+    source_loc: "src/lib/format.ts:10"
+    used_by_units: [patient_dashboard, staff_dashboard, pharmacy_dashboard, reception_dashboard]
+    fields:
+      - {name: formatDate, type: "(value: string | Date) => string"}
+      - {name: formatDay, type: "(value: string | Date) => string"}
+      - {name: formatTime, type: "(value: string) => string"}
+      - {name: formatCurrency, type: "(value: number, decimals?: 0 | 2) => string"}
+      - {name: humanize, type: "(value: string) => string"}
+    god_class: false
+    split_candidate: false
+    migration_strategy: copy
+    notes: "Pure display formatting helpers shared by clinical and operational pages."
+
+  - name: ui_primitives
+    kind: utility
+    source_loc: "src/components/ui/primitives.tsx:18"
+    used_by_units: [doctor_dashboard, laboratory_dashboard, admin_panel]
+    fields:
+      - {name: PageHeader, type: "React component"}
+      - {name: MetricTile, type: "React component"}
+      - {name: DataTable, type: "React component"}
+      - {name: StatusPill, type: "React component"}
+    god_class: false
+    split_candidate: false
+    migration_strategy: copy
+    notes: "Shared accessible dashboard presentation vocabulary."
+
+  - name: motion_utilities
+    kind: utility
+    source_loc: "src/lib/parallax.ts:113"
+    used_by_units: [landing, get_started]
+    fields:
+      - {name: useParallax, type: "React hook"}
+      - {name: Parallax, type: "React component"}
+    god_class: false
+    split_candidate: false
+    migration_strategy: copy
+    notes: "Shared decorative motion with reduced-motion handling."
+

@@ -1,0 +1,7 @@
+unit: admin_panel
+commit: false
+candidate_splits:
+  - id: "src/pages/AdminPanel.tsx:63-335"
+    drivers: [concern_split, data_ownership_split]
+    rationale: "User access, system configuration, analytics, data oversight, and audit logs can evolve independently as admin capabilities grow."
+    source_slice: {file: "src/pages/AdminPanel.tsx", lines: [63, 335]}

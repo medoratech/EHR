@@ -1,0 +1,5 @@
+unit: patient_dashboard
+bindings:
+  - {type: route-declaration, name: "GET /patient", source_loc: "src/App.tsx:26", target: "PatientDashboard", must_appear_in_target: true, notes: "Wrapped by AppShell."}
+  - {type: convention, name: "current patient data selectors", source_loc: "src/data/api.ts:106", target: "PatientDashboard", must_appear_in_target: true, notes: "Uses CURRENT_PATIENT_ID-backed exports."}
+runtime_config: []

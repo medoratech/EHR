@@ -1,0 +1,5 @@
+unit: landing
+bindings:
+  - {type: route-declaration, name: "GET /", source_loc: "src/App.tsx:15", target: "Landing", must_appear_in_target: true, notes: "Browser route rendered by BrowserRouter."}
+  - {type: convention, name: "window scroll listener", source_loc: "src/pages/Landing.tsx:627", target: "Landing header", must_appear_in_target: true, notes: "Passive listener with cleanup."}
+runtime_config: []

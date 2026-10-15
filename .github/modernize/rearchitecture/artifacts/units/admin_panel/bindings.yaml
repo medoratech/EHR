@@ -1,0 +1,4 @@
+unit: admin_panel
+bindings:
+  - {type: route-declaration, name: "GET /admin", source_loc: "src/App.tsx:32", target: "AdminPanel", must_appear_in_target: true, notes: "Wrapped by AppShell."}
+runtime_config: []

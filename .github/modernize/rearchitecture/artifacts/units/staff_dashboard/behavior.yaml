@@ -1,0 +1,10 @@
+unit: staff_dashboard
+side_effects:
+  - {source_loc: "src/pages/StaffDashboard.tsx:34", effect: "Maintains task status changes and discharge verification state locally.", must_preserve: true}
+branches:
+  - {source_loc: "src/pages/StaffDashboard.tsx:40", condition: "task is assigned to current staff member", behavior: "Include it in My task queue.", must_preserve: true}
+  - {source_loc: "src/pages/StaffDashboard.tsx:119", condition: "task status is done", behavior: "Hide start/complete actions and show completed status.", must_preserve: true}
+error_paths: []
+concurrency:
+  model: event-loop
+  tx_boundary: {source_loc: "none", scope: "No transaction; local task state.", isolation: "none", must_preserve: false}

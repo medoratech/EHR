@@ -1,0 +1,9 @@
+unit: get_started
+side_effects:
+  - {source_loc: "src/pages/GetStarted.tsx:39", effect: "Navigates to /signup or /login after selecting an onboarding option.", must_preserve: true}
+branches:
+  - {source_loc: "src/pages/GetStarted.tsx:37", condition: "selected option is create account or sign in", behavior: "Navigate to the option's configured destination.", must_preserve: true}
+error_paths: []
+concurrency:
+  model: event-loop
+  tx_boundary: {source_loc: "none", scope: "No transaction; browser navigation only.", isolation: "none", must_preserve: false}

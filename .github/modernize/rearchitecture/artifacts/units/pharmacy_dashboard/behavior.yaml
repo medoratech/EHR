@@ -1,0 +1,10 @@
+unit: pharmacy_dashboard
+side_effects:
+  - {source_loc: "src/pages/PharmacyDashboard.tsx:26", effect: "Stores dispensed and restocked IDs for immediate UI feedback.", must_preserve: true}
+branches:
+  - {source_loc: "src/pages/PharmacyDashboard.tsx:29", condition: "inventory stock is zero, below reorder level, or healthy", behavior: "Render corresponding stock severity and reorder affordance.", must_preserve: true}
+  - {source_loc: "src/pages/PharmacyDashboard.tsx:191", condition: "medicine has been dispensed", behavior: "Show dispensed status instead of dispense action.", must_preserve: true}
+error_paths: []
+concurrency:
+  model: event-loop
+  tx_boundary: {source_loc: "none", scope: "No transaction; local pharmacy action state.", isolation: "none", must_preserve: false}

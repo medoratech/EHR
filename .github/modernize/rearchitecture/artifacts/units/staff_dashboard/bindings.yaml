@@ -1,0 +1,4 @@
+unit: staff_dashboard
+bindings:
+  - {type: route-declaration, name: "GET /staff", source_loc: "src/App.tsx:28", target: "StaffDashboard", must_appear_in_target: true, notes: "Wrapped by AppShell."}
+runtime_config: []

@@ -1,0 +1,11 @@
+unit: reception_dashboard
+side_effects:
+  - {source_loc: "src/pages/ReceptionistDashboard.tsx:24", effect: "Stores appointment confirmations, payments, and printed invoice IDs locally.", must_preserve: true}
+  - {source_loc: "src/pages/ReceptionistDashboard.tsx:30", effect: "Computes patient-flow stage from appointment time and current local time.", must_preserve: true}
+branches:
+  - {source_loc: "src/pages/ReceptionistDashboard.tsx:35", condition: "appointment is confirmed or already confirmed locally", behavior: "Treat as confirmed for flow and action labels.", must_preserve: true}
+  - {source_loc: "src/pages/ReceptionistDashboard.tsx:49", condition: "confirmed appointment time is before current time", behavior: "Count as in consultation; otherwise count as waiting.", must_preserve: true}
+error_paths: []
+concurrency:
+  model: event-loop
+  tx_boundary: {source_loc: "none", scope: "No transaction; local front-desk action state.", isolation: "none", must_preserve: false}

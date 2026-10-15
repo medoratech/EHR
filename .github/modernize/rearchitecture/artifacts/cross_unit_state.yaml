@@ -1,0 +1,3 @@
+flows: []
+notes: "No statically identifiable cross-unit session, cookie, request, thread-local, or framework-context flow exists. Shared records are read from module-level in-memory exports, but no analyzed unit writes them for another unit to consume; dashboard mutations are component-local state and reset on reload."
+

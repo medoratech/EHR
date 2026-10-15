@@ -1,0 +1,4 @@
+unit: doctor_dashboard
+bindings:
+  - {type: route-declaration, name: "GET /doctor", source_loc: "src/App.tsx:27", target: "DoctorDashboard", must_appear_in_target: true, notes: "Wrapped by AppShell."}
+runtime_config: []

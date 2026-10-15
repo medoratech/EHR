@@ -1,0 +1,7 @@
+unit: landing
+commit: false
+candidate_splits:
+  - id: "src/pages/Landing.tsx:606-1522"
+    drivers: [concern_split]
+    rationale: "The page combines marketing navigation, hero presentation, solution content, pricing, testimonials, and footer sections; design may split sections if reuse or change cadence requires it."
+    source_slice: {file: "src/pages/Landing.tsx", lines: [606, 1522]}

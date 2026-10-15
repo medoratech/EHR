@@ -1,0 +1,7 @@
+unit: reception_dashboard
+commit: false
+candidate_splits:
+  - id: "src/pages/ReceptionistDashboard.tsx:23-320"
+    drivers: [concern_split, execution_model_split]
+    rationale: "Patient flow, appointment approval, billing, printing, and discharge coordination are distinct front-desk workflows."
+    source_slice: {file: "src/pages/ReceptionistDashboard.tsx", lines: [23, 320]}

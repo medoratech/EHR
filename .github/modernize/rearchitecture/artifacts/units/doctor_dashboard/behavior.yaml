@@ -1,0 +1,12 @@
+unit: doctor_dashboard
+side_effects:
+  - {source_loc: "src/pages/DoctorDashboard.tsx:37", effect: "Stores query, risk filter, approval, task assignment, delegation, and note feedback state locally.", must_preserve: true}
+  - {source_loc: "src/pages/DoctorDashboard.tsx:438", effect: "Shows note-saved confirmation after a doctor saves a note.", must_preserve: true}
+branches:
+  - {source_loc: "src/pages/DoctorDashboard.tsx:45", condition: "query or risk filter changes", behavior: "Filter patients and sort by severity rank.", must_preserve: true}
+  - {source_loc: "src/pages/DoctorDashboard.tsx:60", condition: "problem summary has no approval", behavior: "Include patient in approval queue.", must_preserve: true}
+  - {source_loc: "src/pages/DoctorDashboard.tsx:68", condition: "task has an assignee selected", behavior: "Allow delegation; otherwise do not add it to delegated state.", must_preserve: true}
+error_paths: []
+concurrency:
+  model: event-loop
+  tx_boundary: {source_loc: "none", scope: "No transaction; in-memory reads and local component state.", isolation: "none", must_preserve: false}

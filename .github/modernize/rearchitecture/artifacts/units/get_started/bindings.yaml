@@ -1,0 +1,4 @@
+unit: get_started
+bindings:
+  - {type: route-declaration, name: "GET /get-started", source_loc: "src/App.tsx:16", target: "GetStarted", must_appear_in_target: true, notes: "Browser route rendered by BrowserRouter."}
+runtime_config: []

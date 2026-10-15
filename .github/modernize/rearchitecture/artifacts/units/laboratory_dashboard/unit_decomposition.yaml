@@ -1,0 +1,7 @@
+unit: laboratory_dashboard
+commit: false
+candidate_splits:
+  - id: "src/pages/LaboratoryDashboard.tsx:33-260"
+    drivers: [concern_split, data_ownership_split]
+    rationale: "Test analytics, report upload management, patient history, and bookable catalogue represent separate laboratory concerns."
+    source_slice: {file: "src/pages/LaboratoryDashboard.tsx", lines: [33, 260]}

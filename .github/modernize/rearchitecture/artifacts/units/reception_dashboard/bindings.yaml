@@ -1,0 +1,4 @@
+unit: reception_dashboard
+bindings:
+  - {type: route-declaration, name: "GET /reception", source_loc: "src/App.tsx:31", target: "ReceptionistDashboard", must_appear_in_target: true, notes: "Wrapped by AppShell."}
+runtime_config: []

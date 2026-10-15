@@ -1,0 +1,7 @@
+unit: patient_dashboard
+commit: false
+candidate_splits:
+  - id: "src/pages/PatientDashboard.tsx:164-755"
+    drivers: [concern_split, data_ownership_split]
+    rationale: "The dashboard combines health summary, appointments, labs, medicines, notifications, glucose, diet, symptom triage, and profile sections over one large page."
+    source_slice: {file: "src/pages/PatientDashboard.tsx", lines: [164, 755]}

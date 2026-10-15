@@ -1,0 +1,7 @@
+unit: doctor_dashboard
+commit: false
+candidate_splits:
+  - id: "src/pages/DoctorDashboard.tsx:34-448"
+    drivers: [concern_split]
+    rationale: "Patient triage, clinical summary approval, report review, task delegation, and analytics are distinct doctor workflows within one page."
+    source_slice: {file: "src/pages/DoctorDashboard.tsx", lines: [34, 448]}

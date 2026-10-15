@@ -1,0 +1,11 @@
+unit: login
+side_effects:
+  - {source_loc: "src/pages/Login.tsx:18", effect: "Prevents native form submission and navigates to a dashboard URL.", must_preserve: true}
+  - {source_loc: "src/pages/Login.tsx:138", effect: "Autofills selected demo email and the demo password.", must_preserve: true}
+branches:
+  - {source_loc: "src/pages/Login.tsx:18", condition: "email matches a configured demo account", behavior: "Navigate to that role dashboard; otherwise navigate to /patient.", must_preserve: true}
+  - {source_loc: "src/pages/Login.tsx:29", condition: "required email/password fields are empty", behavior: "Browser validation prevents submission.", must_preserve: true}
+error_paths: []
+concurrency:
+  model: event-loop
+  tx_boundary: {source_loc: "none", scope: "No transaction; credentials are not sent to a server.", isolation: "none", must_preserve: false}

@@ -1,0 +1,10 @@
+unit: laboratory_dashboard
+side_effects:
+  - {source_loc: "src/pages/LaboratoryDashboard.tsx:34", effect: "Tracks report IDs marked uploaded in local component state.", must_preserve: true}
+branches:
+  - {source_loc: "src/pages/LaboratoryDashboard.tsx:36", condition: "test is incomplete and report is not uploaded", behavior: "Include it in awaiting-upload queue.", must_preserve: true}
+  - {source_loc: "src/pages/LaboratoryDashboard.tsx:37", condition: "test is new and report is uploaded", behavior: "Include it in actionable review queue.", must_preserve: true}
+error_paths: []
+concurrency:
+  model: event-loop
+  tx_boundary: {source_loc: "none", scope: "No transaction; local upload feedback.", isolation: "none", must_preserve: false}

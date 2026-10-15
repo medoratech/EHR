@@ -1,0 +1,10 @@
+unit: admin_panel
+side_effects:
+  - {source_loc: "src/pages/AdminPanel.tsx:65", effect: "Stores selected role filter and locally saved user access IDs.", must_preserve: true}
+branches:
+  - {source_loc: "src/pages/AdminPanel.tsx:67", condition: "role filter is all or matches user role", behavior: "Show the corresponding user subset.", must_preserve: true}
+  - {source_loc: "src/pages/AdminPanel.tsx:78", condition: "audit event severity is not normal", behavior: "Count it as requiring review.", must_preserve: true}
+error_paths: []
+concurrency:
+  model: event-loop
+  tx_boundary: {source_loc: "none", scope: "No transaction; local admin feedback state.", isolation: "none", must_preserve: false}

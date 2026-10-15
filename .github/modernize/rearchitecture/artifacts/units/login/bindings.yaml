@@ -1,0 +1,5 @@
+unit: login
+bindings:
+  - {type: route-declaration, name: "GET /login", source_loc: "src/App.tsx:17", target: "Login", must_appear_in_target: true, notes: "Browser route."}
+  - {type: route-declaration, name: "POST sign-in form", source_loc: "src/pages/Login.tsx:29", target: "handleSubmit", must_appear_in_target: true, notes: "Client-only demo form submission."}
+runtime_config: []

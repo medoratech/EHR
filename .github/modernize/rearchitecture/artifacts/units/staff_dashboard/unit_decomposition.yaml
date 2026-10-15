@@ -1,0 +1,7 @@
+unit: staff_dashboard
+commit: false
+candidate_splits:
+  - id: "src/pages/StaffDashboard.tsx:34-300"
+    drivers: [concern_split, execution_model_split]
+    rationale: "Task execution, vitals visibility, and discharge verification have separate operational lifecycles and can become focused workspaces."
+    source_slice: {file: "src/pages/StaffDashboard.tsx", lines: [34, 300]}

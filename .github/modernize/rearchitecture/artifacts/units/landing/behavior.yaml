@@ -1,0 +1,11 @@
+unit: landing
+side_effects:
+  - {source_loc: "src/pages/Landing.tsx:620", effect: "Registers and cleans up a passive window scroll listener to switch header contrast.", must_preserve: true}
+  - {source_loc: "src/pages/Landing.tsx:1094", effect: "Navigates to /login or /get-started from CTA controls.", must_preserve: true}
+branches:
+  - {source_loc: "src/pages/Landing.tsx:623", condition: "window.scrollY is below hero height minus 72", behavior: "Render dark-on-hero header styling; otherwise render light header styling.", must_preserve: true}
+  - {source_loc: "src/pages/Landing.tsx:738", condition: "mobile menu is open", behavior: "Render mobile navigation and close it when an anchor is selected.", must_preserve: true}
+error_paths: []
+concurrency:
+  model: event-loop
+  tx_boundary: {source_loc: "none", scope: "No transaction; browser state only.", isolation: "none", must_preserve: false}

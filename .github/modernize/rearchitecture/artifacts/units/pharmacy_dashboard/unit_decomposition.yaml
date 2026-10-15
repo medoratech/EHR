@@ -1,0 +1,7 @@
+unit: pharmacy_dashboard
+commit: false
+candidate_splits:
+  - id: "src/pages/PharmacyDashboard.tsx:25-309"
+    drivers: [concern_split, data_ownership_split]
+    rationale: "Inventory, prescription fulfilment, refill reminders, and invoice context have separate operational responsibilities."
+    source_slice: {file: "src/pages/PharmacyDashboard.tsx", lines: [25, 309]}
