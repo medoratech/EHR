@@ -1,5 +1,6 @@
 import {
   Building2,
+  Hospital,
   CalendarClock,
   ChartColumn,
   Database,
@@ -24,11 +25,12 @@ import {
 } from '../components/ui/primitives'
 import { DataTable } from '../components/ui/Table'
 import { LineChart, PieChart } from '../components/ui/Chart'
-import { dailyVolume, patients, systemConfig } from '../data/api'
+import { dailyVolume } from '../data/api'
 import { formatCurrency, formatDateTime, humanize } from '../lib/format'
-import type { User } from '../data/types'
-import { useDemoStore } from '../state/useDemoStore'
-import { DemoWorkspace, WorkspaceField } from '../components/ui/DemoWorkspace'
+import type { StaffRole, User } from '../data/types'
+import { useAuth } from '../state/useAuth'
+import { useEhr } from '../state/useEhr'
+import { Workspace, WorkspaceField, WorkspaceSelect } from '../components/ui/Workspace'
 import { FocusedPortalView } from '../components/ui/FocusedPortalView'
 
 const statusTone: Record<User['status'], Tone> = {
@@ -54,11 +56,30 @@ const roleColors: Record<string, string> = {
 
 export function AdminPanel() {
   const [searchParams] = useSearchParams()
-  const { users, updateUserStatus, auditEvents, appointments, labTests, prescriptions, invoices, vitals } =
-    useDemoStore()
+  const { user: me } = useAuth()
+  const {
+    users,
+    patients,
+    systemSettings,
+    auditEvents,
+    appointments,
+    labTests,
+    prescriptions,
+    invoices,
+    vitals,
+    updateUser,
+    inviteUser,
+    clinic,
+    updateClinic,
+    addDepartment,
+    updateDepartment,
+  } = useEhr()
   const [roleFilter, setRoleFilter] = useState<'all' | User['role']>('all')
-  const [saved, setSaved] = useState<string[]>([])
   const [workspaceOpen, setWorkspaceOpen] = useState(false)
+  const [setupLink, setSetupLink] = useState<string | null>(null)
+  const [clinicOpen, setClinicOpen] = useState(false)
+  /** Department being renamed, or '' when adding a new one. */
+  const [departmentEdit, setDepartmentEdit] = useState<string | null>(null)
 
   const filteredUsers = users.filter((u) => roleFilter === 'all' || u.role === roleFilter)
 
@@ -122,12 +143,23 @@ export function AdminPanel() {
       },
     }[requestedView as 'access' | 'oversight' | 'audit']
 
-    if (viewContent) return <FocusedPortalView {...viewContent} onAction={() => setWorkspaceOpen(true)} />
+    if (viewContent) {
+      return (
+        <>
+          <FocusedPortalView {...viewContent} onAction={requestedView === 'access' ? () => openInvite() : undefined} />
+          {renderWorkspace()}
+        </>
+      )
+    }
   }
 
   function toggleAccess(user: User) {
-    setSaved((prev) => (prev.includes(user.id) ? prev : [...prev, user.id]))
-    updateUserStatus(user.id, user.status === 'active' ? 'suspended' : 'active')
+    void updateUser(user.id, { status: user.status === 'active' ? 'suspended' : 'active' })
+  }
+
+  function openInvite() {
+    setSetupLink(null)
+    setWorkspaceOpen(true)
   }
 
   return (
@@ -137,7 +169,7 @@ export function AdminPanel() {
         subtitle="User access, system configuration and the security audit trail."
         icon={<ShieldAlert className="h-6 w-6" aria-hidden="true" />}
         actions={
-          <Button variant="primary" onClick={() => setWorkspaceOpen(true)}>
+          <Button variant="primary" onClick={openInvite}>
             <UserCog className="h-4 w-4" aria-hidden="true" />
             Add user
           </Button>
@@ -245,10 +277,12 @@ export function AdminPanel() {
               header: 'Action',
               align: 'right',
               render: (u) =>
-                saved.includes(u.id) ? (
-                  <StatusPill severity="normal">Updated</StatusPill>
+                u.id === me?.id ? (
+                  <span className="text-sm text-cyan-700">You</span>
                 ) : (
-                  <Button onClick={() => toggleAccess(u)}>Edit access</Button>
+                  <Button onClick={() => toggleAccess(u)}>
+                    {u.status === 'active' ? 'Suspend' : u.status === 'invited' ? 'Approve' : 'Reactivate'}
+                  </Button>
                 ),
             },
           ]}
@@ -305,13 +339,13 @@ export function AdminPanel() {
           <Card>
             <CardHeader
               title="System configuration"
-              description="Departments, services and internal workflows"
+              description="Services and internal workflows"
               icon={<Settings className="h-5 w-5" aria-hidden="true" />}
             />
             <ul className="divide-y divide-cyan-100">
-              {systemConfig.map((row) => (
+              {systemSettings.map((row) => (
                 <li
-                  key={row.label}
+                  key={row.key}
                   className="flex items-center justify-between gap-3 px-5 py-3.5"
                 >
                   <span className="text-sm text-cyan-800">{row.label}</span>
@@ -322,6 +356,63 @@ export function AdminPanel() {
           </Card>
         </div>
       </div>
+
+      {clinic ? (
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card>
+            <CardHeader
+              title="Clinic settings"
+              description="Reference data used across every portal"
+              icon={<Hospital className="h-5 w-5" aria-hidden="true" />}
+              action={<Button onClick={() => setClinicOpen(true)}>Edit</Button>}
+            />
+            <dl className="divide-y divide-cyan-100">
+              {[
+                ['Clinic name', clinic.name],
+                ['Currency', `${clinic.currency} · e.g. ${formatCurrency(1250)}`],
+                ['Locale', clinic.locale],
+                ['Time zone', clinic.timeZone],
+                ['Appointment times', clinic.appointmentSlots.join(', ')],
+                ['Payment methods', clinic.paymentMethods.join(', ')],
+                ['Unassigned bookings shown as', clinic.defaultClinician],
+                ['Emergency number', clinic.emergencyNumber],
+              ].map(([label, value]) => (
+                <div key={label} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5">
+                  <dt className="text-sm text-cyan-800">{label}</dt>
+                  <dd className="text-right text-sm font-semibold text-cyan-950">{value}</dd>
+                </div>
+              ))}
+            </dl>
+          </Card>
+
+          <Card>
+            <CardHeader
+              title="Departments"
+              description="Closed departments keep their history but take no new patients or bookings"
+              icon={<Building2 className="h-5 w-5" aria-hidden="true" />}
+              action={<Button onClick={() => setDepartmentEdit('')}>Add department</Button>}
+            />
+            <ul className="divide-y divide-cyan-100">
+              {clinic.departments.map((department) => (
+                <li key={department.name} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3">
+                  <span className="flex items-center gap-2">
+                    <span className="text-sm font-semibold text-cyan-950">{department.name}</span>
+                    {department.active ? null : <StatusPill tone="neutral">Closed</StatusPill>}
+                  </span>
+                  <span className="flex gap-2">
+                    <Button variant="ghost" onClick={() => setDepartmentEdit(department.name)}>
+                      Rename
+                    </Button>
+                    <Button onClick={() => void updateDepartment(department.name, { active: !department.active })}>
+                      {department.active ? 'Close' : 'Reopen'}
+                    </Button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </div>
+      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
@@ -385,19 +476,121 @@ export function AdminPanel() {
           ]}
         />
       </Card>
-      {workspaceOpen ? (
-        <DemoWorkspace title="Add team member" description="Invite a colleague and assign their Medora role." action="Send invitation" onClose={() => setWorkspaceOpen(false)}>
-          <WorkspaceField label="Full name" />
-          <WorkspaceField label="Work email" />
-          <WorkspaceField label="Role">
-            <select className="mt-2 h-11 w-full rounded-xl border border-cyan-200 bg-cyan-50/50 px-3 text-sm font-normal text-cyan-900">
-              <option>Doctor</option><option>Staff</option><option>Laboratory</option><option>Pharmacy</option><option>Reception</option>
-            </select>
-          </WorkspaceField>
-        </DemoWorkspace>
-      ) : null}
+      {renderWorkspace()}
     </>
   )
+
+  function renderWorkspace() {
+    const list = (value: string) =>
+      value
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean)
+
+    if (clinicOpen && clinic) {
+      return (
+        <Workspace
+          title="Clinic settings"
+          description="Changes apply to every portal straight away."
+          action="Save settings"
+          onClose={() => setClinicOpen(false)}
+          onComplete={(values) =>
+            updateClinic({
+              name: values.name,
+              currency: values.currency,
+              locale: values.locale,
+              timeZone: values.timeZone,
+              appointmentSlots: list(values.appointmentSlots),
+              paymentMethods: list(values.paymentMethods),
+              defaultClinician: values.defaultClinician,
+              emergencyNumber: values.emergencyNumber,
+            })
+          }
+        >
+          <WorkspaceField label="Clinic name" name="name" defaultValue={clinic.name} />
+          <div className="grid gap-4 sm:grid-cols-3">
+            <WorkspaceField label="Currency (ISO code)" name="currency" defaultValue={clinic.currency} placeholder="GHS" />
+            <WorkspaceField label="Locale" name="locale" defaultValue={clinic.locale} placeholder="en-GH" />
+            <WorkspaceField label="Time zone" name="timeZone" defaultValue={clinic.timeZone} placeholder="Africa/Accra" />
+          </div>
+          <WorkspaceField
+            label="Appointment times (HH:mm, comma separated)"
+            name="appointmentSlots"
+            defaultValue={clinic.appointmentSlots.join(', ')}
+          />
+          <WorkspaceField
+            label="Payment methods (comma separated)"
+            name="paymentMethods"
+            defaultValue={clinic.paymentMethods.join(', ')}
+          />
+          <div className="grid gap-4 sm:grid-cols-2">
+            <WorkspaceField label="Show unassigned bookings as" name="defaultClinician" defaultValue={clinic.defaultClinician} />
+            <WorkspaceField label="Emergency number (shown in symptom checks)" name="emergencyNumber" type="tel" defaultValue={clinic.emergencyNumber} />
+          </div>
+        </Workspace>
+      )
+    }
+
+    if (departmentEdit !== null) {
+      const renaming = departmentEdit !== ''
+      return (
+        <Workspace
+          title={renaming ? `Rename ${departmentEdit}` : 'Add department'}
+          description={renaming ? 'Patients and appointments move to the new name.' : 'New departments are open straight away.'}
+          action={renaming ? 'Rename department' : 'Add department'}
+          onClose={() => setDepartmentEdit(null)}
+          onComplete={(values) =>
+            renaming ? updateDepartment(departmentEdit, { rename: values.name }) : addDepartment(values.name)
+          }
+        >
+          <WorkspaceField label="Department name" name="name" defaultValue={renaming ? departmentEdit : undefined} />
+        </Workspace>
+      )
+    }
+
+    if (!workspaceOpen) return null
+    const link = setupLink ? `${window.location.origin}${setupLink}` : null
+    return (
+      <Workspace
+        title="Add team member"
+        description="Invite a colleague and assign their Medora role. They choose their own password."
+        action="Send invitation"
+        onClose={() => setWorkspaceOpen(false)}
+        onComplete={async (values) => {
+          const invited = await inviteUser({ name: values.name, email: values.email, role: values.role as StaffRole })
+          if (invited) setSetupLink(invited.setupPath)
+          return invited
+        }}
+        result={
+          link ? (
+            <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-4 text-sm text-cyan-900">
+              <p className="font-semibold">Share this one-time setup link (valid 72 hours)</p>
+              <p className="mt-2 rounded-lg bg-white px-3 py-2 font-mono text-xs break-all">{link}</p>
+              <Button className="mt-3" onClick={() => void navigator.clipboard?.writeText(link)}>
+                Copy link
+              </Button>
+            </div>
+          ) : null
+        }
+      >
+        <WorkspaceField label="Full name" name="name" />
+        <WorkspaceField label="Work email" name="email" type="email" />
+        <WorkspaceField label="Role">
+          <WorkspaceSelect
+            name="role"
+            options={[
+              { value: 'doctor', label: 'Doctor' },
+              { value: 'staff', label: 'Staff' },
+              { value: 'lab', label: 'Laboratory' },
+              { value: 'pharmacy', label: 'Pharmacy' },
+              { value: 'receptionist', label: 'Reception' },
+              { value: 'admin', label: 'Admin' },
+            ]}
+          />
+        </WorkspaceField>
+      </Workspace>
+    )
+  }
 }
 
 function initialsOf(name: string): string {

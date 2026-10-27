@@ -1,19 +1,15 @@
+// JSON shapes returned by the Medora API (server/src/lib/serialize.ts).
+
 export type Severity = 'normal' | 'abnormal' | 'critical'
 export type Sex = 'female' | 'male' | 'other'
-export type Department =
-  | 'Cardiology'
-  | 'Dermatology'
-  | 'Endocrinology'
-  | 'General Medicine'
-  | 'Neurology'
-  | 'Orthopaedics'
-  | 'Paediatrics'
-  | 'Pulmonology'
+/** A department name; the list is clinic reference data served by GET /api/clinic. */
+export type Department = string
 
 export interface Patient {
   id: string
   mrn: string
   name: string
+  dateOfBirth: string
   age: number
   sex: Sex
   phone: string
@@ -37,6 +33,7 @@ export interface Appointment {
   id: string
   patientId: string
   doctor: string
+  doctorId: string | null
   department: Department
   date: string
   time: string
@@ -73,7 +70,9 @@ export interface Task {
   kind: TaskKind
   patientId: string
   assignedBy: string
+  assignedById: string
   assignedTo: string
+  assignedToId: string
   due: string
   status: TaskStatus
   severity: Severity
@@ -96,6 +95,16 @@ export interface LabTest {
   orderedAt: string
   reportUploaded: boolean
   isNew: boolean
+  releasedAt: string | null
+}
+
+export interface LabCatalogueItem {
+  id: string
+  name: string
+  category: string
+  price: number
+  turnaround: string
+  active: boolean
 }
 
 export interface Medicine {
@@ -105,12 +114,14 @@ export interface Medicine {
   frequency: string
   durationDays: number
   ordered: boolean
+  dispensed: boolean
 }
 
 export interface Prescription {
   id: string
   patientId: string
   doctor: string
+  doctorId: string
   issuedAt: string
   refillsLeft: number
   refillsTotal: number
@@ -126,6 +137,7 @@ export interface InventoryItem {
   reorderLevel: number
   expiry: string
   price: number
+  reorderRequestedAt: string | null
 }
 
 export type InvoiceStatus = 'unpaid' | 'partial' | 'paid'
@@ -135,8 +147,10 @@ export interface Invoice {
   patientId: string
   amount: number
   status: InvoiceStatus
+  description: string | null
   issuedAt: string
   method: string | null
+  paidAt: string | null
 }
 
 export type DischargeStatus = 'draft' | 'staff-verified' | 'doctor-approved'
@@ -149,17 +163,30 @@ export interface DischargeSummary {
   diagnosis: string
   status: DischargeStatus
   completedBy: string
+  approvedBy: string | null
 }
 
-export type Role = 'admin' | 'doctor' | 'lab' | 'pharmacy' | 'receptionist' | 'staff'
+export type StaffRole = 'admin' | 'doctor' | 'lab' | 'pharmacy' | 'receptionist' | 'staff'
+export type Role = StaffRole | 'patient'
 
 export interface User {
   id: string
   name: string
-  role: Role
+  role: StaffRole
   email: string
   status: 'active' | 'invited' | 'suspended'
   lastActive: string
+  patientId: string | null
+}
+
+/** The signed-in account, as returned by /api/auth. */
+export interface SessionUser {
+  id: string
+  name: string
+  email: string
+  role: Role
+  patientId: string | null
+  home: string
 }
 
 export interface AuditEvent {
@@ -182,6 +209,7 @@ export interface Notification {
 }
 
 export interface GlucoseReading {
+  patientId: string
   date: string
   value: number
 }
@@ -207,4 +235,94 @@ export interface ProblemSummary {
   aiGenerated: boolean
   approvedBy: string | null
   updatedAt: string
+}
+
+export interface ClinicalNote {
+  id: string
+  patientId: string
+  author: string
+  authorId: string
+  body: string
+  createdAt: string
+}
+
+export interface SystemSetting {
+  key: string
+  label: string
+  value: string
+}
+
+export interface DemoAccount {
+  name: string
+  email: string
+  role: string
+  password: string
+}
+
+/** Clinic-wide reference settings (GET /api/clinic). */
+export interface ClinicConfig {
+  name: string
+  currency: string
+  locale: string
+  timeZone: string
+  appointmentSlots: string[]
+  paymentMethods: string[]
+  defaultClinician: string
+  emergencyNumber: string
+  departments: { name: string; active: boolean }[]
+}
+
+export interface HealthTip {
+  id: string
+  patientId?: string
+  category: string
+  title: string
+  body: string
+  conditions: string[]
+  active: boolean
+  /** The patient's recorded condition this tip was chosen for; null for general advice. */
+  matchedCondition: string | null
+}
+
+export type Urgency = 'emergency' | 'urgent' | 'soon' | 'routine' | 'self_care'
+
+/** An OLDCARTS symptom history. */
+export interface OldcartsAnswers {
+  chiefComplaint: string
+  onset: string
+  location: string
+  duration: string
+  character: string
+  aggravating: string
+  relieving: string
+  radiation: string
+  timing: string
+  severity: number
+  associated: string
+}
+
+export interface TriageAssessment {
+  id: string
+  patientId: string
+  answers: OldcartsAnswers
+  urgency: Urgency
+  department: string | null
+  patientAdvice: string
+  redFlags: string[]
+  source: 'ai' | 'rules'
+  createdAt: string
+  submittedBy: string
+  reviewedBy: string | null
+  reviewedAt: string | null
+  /** Care-team only. */
+  clinicalSummary?: string
+  considerations?: string[]
+  model?: string | null
+}
+
+export interface SystemInfo {
+  name: string
+  demoMode: boolean
+  clock: { now: string; pinned: boolean }
+  demoAccounts: DemoAccount[]
 }

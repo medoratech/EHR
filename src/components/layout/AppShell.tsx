@@ -1,10 +1,13 @@
 import { Bell, ChevronDown, HeartPulse, LogOut, Menu, RotateCcw, Search, X } from 'lucide-react'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router'
-import { currentPatient, patients, users } from '../../data/api'
+import { patientInitials } from '../../data/api'
+import { formatDateTime, humanize } from '../../lib/format'
+import { useAuth } from '../../state/useAuth'
+import { useEhr } from '../../state/useEhr'
+import { PORTALS_BY_ROLE } from './access'
 import { PatientContextBar } from './PatientContextBar'
 import { portalNavigation, type NavItem } from './nav'
-import { useDemoStore } from '../../state/useDemoStore'
 
 const viewDetails: Record<string, { title: string; description: string; action: string }> = {
   health: { title: 'My health', description: 'Your care overview, latest vitals and next steps.', action: 'Review health summary' },
@@ -48,44 +51,6 @@ function ViewWorkspace({ portalId, search }: { portalId: string; search: string 
         </span>
       </div>
     </section>
-  )
-}
-
-function initialsOf(name: string): string {
-  return name
-    .replace(/^Dr\.\s*/, '')
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? '')
-    .join('')
-}
-
-const roleToUserRole: Record<string, string> = {
-  Patient: 'patient',
-  Clinician: 'doctor',
-  Nursing: 'staff',
-  Diagnostics: 'lab',
-  Pharmacy: 'pharmacy',
-  'Front desk': 'receptionist',
-  Administration: 'admin',
-}
-
-function currentUser(role: string) {
-  const match = roleToUserRole[role]
-  if (match === 'patient') {
-    return {
-      name: currentPatient.name,
-      email: 'patient@medora.health',
-      role: 'patient' as const,
-      status: 'active' as const,
-      lastActive: currentPatient.lastVisit,
-    }
-  }
-  return (
-    users.find((u) => u.role === match && u.status === 'active') ??
-    users.find((u) => u.status === 'active') ??
-    users[0]
   )
 }
 
@@ -155,23 +120,32 @@ function NavList({
   )
 }
 
-function SidebarFooter() {
+function useSignOut() {
   const navigate = useNavigate()
-  const { resetDemo } = useDemoStore()
+  const { logout } = useAuth()
+  return async () => {
+    await logout()
+    navigate('/', { replace: true })
+  }
+}
+
+function SidebarFooter() {
+  const signOut = useSignOut()
+  const { info } = useAuth()
+  const { resetDemo } = useEhr()
   const actionClass =
     'flex min-h-11 w-full cursor-pointer items-center gap-3 rounded-lg px-3 text-sm font-medium text-cyan-100 transition-colors duration-200 hover:bg-white/10 hover:text-white'
   return (
     <div className="space-y-1 border-t border-white/10 p-3">
-      <button type="button" onClick={resetDemo} className={actionClass}>
-        <RotateCcw className="h-4 w-4 text-cyan-300" aria-hidden="true" />
-        Reset demo data
-      </button>
+      {info?.demoMode ? (
+        <button type="button" onClick={() => void resetDemo()} className={actionClass}>
+          <RotateCcw className="h-4 w-4 text-cyan-300" aria-hidden="true" />
+          Reset demo data
+        </button>
+      ) : null}
       <button
         type="button"
-        onClick={() => {
-          sessionStorage.removeItem('medora:demo-session')
-          navigate('/')
-        }}
+        onClick={() => void signOut()}
         className={actionClass}
       >
         <LogOut className="h-4 w-4 text-cyan-300" aria-hidden="true" />
@@ -182,7 +156,16 @@ function SidebarFooter() {
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { resetDemo, notifications } = useDemoStore()
+  const { user, info } = useAuth()
+  const signOut = useSignOut()
+  const {
+    resetDemo,
+    notifications,
+    patients,
+    setFocusedPatientId,
+    markNotificationRead,
+    markAllNotificationsRead,
+  } = useEhr()
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -191,7 +174,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [profileOpen, setProfileOpen] = useState(false)
   const drawerRef = useRef<HTMLElement>(null)
   const location = useLocation()
-  const navigate = useNavigate()
 
   useEffect(() => {
     if (!drawerOpen) return
@@ -239,9 +221,11 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const portalId = location.pathname.split('/')[1] || 'patient'
   const portal = portalNavigation[portalId] ?? portalNavigation.patient
-  const role = portal.items[0]?.role ?? 'Overview'
-  const user = currentUser(role)
-  const initials = initialsOf(user.name)
+  const role = user?.role ?? 'patient'
+  const openablePortals = PORTALS_BY_ROLE[role].map((id) => portalNavigation[id]).filter(Boolean)
+  const userName = user?.name ?? ''
+  const initials = patientInitials(userName)
+  const canSearch = role !== 'patient'
   const matches = query.trim()
     ? patients
         .filter((patient) =>
@@ -333,6 +317,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
 
             <div className="ml-auto flex items-center gap-2.5 sm:gap-4">
+              {openablePortals.length > 1 ? (
               <div className="relative hidden sm:block">
                 <button
                   type="button"
@@ -349,7 +334,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                     <p className="px-3 py-2 text-[10px] font-bold tracking-[0.18em] text-cyan-500 uppercase">
                       Switch workspace
                     </p>
-                    {Object.values(portalNavigation).map((item) => (
+                    {openablePortals.map((item) => (
                       <NavLink
                         key={item.id}
                         to={`/${item.id}`}
@@ -370,6 +355,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                   </div>
                 ) : null}
               </div>
+              ) : null}
+              {canSearch ? (
               <div className="relative hidden md:block">
                 <span className="sr-only">Search patients, reports and orders</span>
                 <Search
@@ -398,18 +385,14 @@ export function AppShell({ children }: { children: ReactNode }) {
                           key={patient.id}
                           type="button"
                           onClick={() => {
-                            setQuery(patient.name)
+                            setFocusedPatientId(patient.id)
+                            setQuery('')
                             setSearchOpen(false)
-                            navigate('/patient')
                           }}
                           className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-cyan-50"
                         >
                           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-100 text-xs font-bold text-cyan-800">
-                            {patient.name
-                              .split(' ')
-                              .map((part) => part[0])
-                              .slice(0, 2)
-                              .join('')}
+                            {patientInitials(patient.name)}
                           </span>
                           <span className="min-w-0">
                             <span className="block truncate text-sm font-semibold text-cyan-950">
@@ -430,6 +413,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   </div>
                 ) : null}
               </div>
+              ) : null}
 
               <div className="relative">
                 <button
@@ -450,19 +434,47 @@ export function AppShell({ children }: { children: ReactNode }) {
                   <div className="absolute top-13 right-0 z-50 w-80 overflow-hidden rounded-2xl border border-cyan-100 bg-white shadow-2xl shadow-cyan-950/15">
                     <div className="flex items-center justify-between border-b border-cyan-100 px-4 py-3">
                       <p className="text-sm font-bold text-cyan-950">Notifications</p>
-                      <span className="text-xs font-semibold text-cyan-600">
-                        {unreadNotifications.length} unread
-                      </span>
+                      {unreadNotifications.length ? (
+                        <button
+                          type="button"
+                          onClick={() => void markAllNotificationsRead()}
+                          className="cursor-pointer text-xs font-semibold text-cyan-700 hover:underline"
+                        >
+                          Mark all read
+                        </button>
+                      ) : (
+                        <span className="text-xs font-semibold text-cyan-600">All caught up</span>
+                      )}
                     </div>
-                    <ul className="divide-y divide-cyan-100">
-                      {unreadNotifications.slice(0, 3).map((notification) => (
-                        <li key={notification.id} className="px-4 py-3">
-                          <p className="text-sm font-semibold text-cyan-950">{notification.title}</p>
-                          <p className="mt-0.5 text-xs leading-relaxed text-cyan-700">
-                            {notification.body}
-                          </p>
+                    <ul className="max-h-96 divide-y divide-cyan-100 overflow-y-auto">
+                      {notifications.slice(0, 8).map((notification) => (
+                        <li key={notification.id}>
+                          <button
+                            type="button"
+                            disabled={notification.read}
+                            onClick={() => void markNotificationRead(notification.id)}
+                            className="flex w-full cursor-pointer items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-cyan-50 disabled:cursor-default disabled:hover:bg-transparent"
+                          >
+                            <span className="min-w-0 flex-1">
+                              <span className={`block text-sm ${notification.read ? 'font-medium text-cyan-800' : 'font-semibold text-cyan-950'}`}>
+                                {notification.title}
+                              </span>
+                              <span className="mt-0.5 block text-xs leading-relaxed text-cyan-700">
+                                {notification.body}
+                              </span>
+                              <span className="tabular mt-1 block text-[11px] text-cyan-600">
+                                {formatDateTime(notification.at)}
+                              </span>
+                            </span>
+                            {notification.read ? null : (
+                              <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-red-500" aria-label="Unread" />
+                            )}
+                          </button>
                         </li>
                       ))}
+                      {notifications.length === 0 ? (
+                        <li className="px-4 py-6 text-sm text-cyan-700">No notifications yet.</li>
+                      ) : null}
                     </ul>
                   </div>
                 ) : null}
@@ -481,32 +493,31 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <span className="hidden text-left sm:block">
                   <span className="block text-xs leading-tight text-cyan-600">Signed in as</span>
                   <span className="mt-0.5 block text-sm leading-tight font-semibold text-cyan-950">
-                    {user.name}
+                    {userName}
                   </span>
                 </span>
                 <ChevronDown className="h-4 w-4 text-cyan-600" aria-hidden="true" />
               </button>
               {profileOpen ? (
                 <div className="absolute top-14 right-0 z-50 w-64 rounded-2xl border border-cyan-100 bg-white p-3 shadow-2xl shadow-cyan-950/15">
-                  <p className="text-sm font-bold text-cyan-950">{user.name}</p>
-                  <p className="mt-0.5 text-xs text-cyan-600">{user.role} · {user.email}</p>
+                  <p className="text-sm font-bold text-cyan-950">{userName}</p>
+                  <p className="mt-0.5 text-xs text-cyan-600">{humanize(role)} · {user?.email}</p>
                   <div className="my-3 h-px bg-cyan-100" />
+                  {info?.demoMode ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void resetDemo()
+                        setProfileOpen(false)
+                      }}
+                      className="flex min-h-10 w-full cursor-pointer items-center rounded-xl px-3 text-left text-sm font-semibold text-cyan-800 hover:bg-cyan-50"
+                    >
+                      Reset demo data
+                    </button>
+                  ) : null}
                   <button
                     type="button"
-                    onClick={() => {
-                      resetDemo()
-                      setProfileOpen(false)
-                    }}
-                    className="flex min-h-10 w-full cursor-pointer items-center rounded-xl px-3 text-left text-sm font-semibold text-cyan-800 hover:bg-cyan-50"
-                  >
-                    Reset demo data
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      sessionStorage.removeItem('medora:demo-session')
-                      navigate('/')
-                    }}
+                    onClick={() => void signOut()}
                     className="flex min-h-10 w-full cursor-pointer items-center rounded-xl px-3 text-left text-sm font-semibold text-cyan-800 hover:bg-cyan-50"
                   >
                     <LogOut className="mr-2 h-4 w-4" aria-hidden="true" />

@@ -9,7 +9,10 @@
     "lint": "eslint .",
     "test": "node --test tests/*.test.mjs",
     "typecheck": "tsc -b",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "dev:api": "npm --prefix server run dev",
+    "db:up": "docker compose up -d db --wait",
+    "test:api": "npm --prefix server test"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",

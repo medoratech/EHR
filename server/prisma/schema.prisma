@@ -1,0 +1,442 @@
+// Medora EHR — relational model behind the seven role portals.
+//
+// Status-like columns (role, severity, statuses, kinds) are stored as text and
+// validated twice: by zod at the API boundary and by CHECK constraints added in the
+// initial migration. Their allowed values live in src/domain.ts.
+//
+// Clinic reference data (departments, slots, payment methods, currency, time zone)
+// is data, not code: it lives in Department and Clinic and admins edit it.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String    @id
+  name             String
+  email            String    @unique
+  role             String
+  status           String    @default("invited")
+  passwordHash     String?
+  /// Set only for role = patient: the chart this login belongs to.
+  patientId        String?   @unique
+  patient          Patient?  @relation(fields: [patientId], references: [id], onDelete: SetNull)
+  failedLoginCount Int       @default(0)
+  lockedUntil      DateTime?
+  lastActiveAt     DateTime  @default(now())
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  refreshTokens       RefreshToken[]
+  setupTokens         SetupToken[]
+  notifications       Notification[]
+  appointments        Appointment[]      @relation("AppointmentDoctor")
+  vitalsRecorded      Vitals[]           @relation("VitalsRecorder")
+  tasksAssigned       Task[]             @relation("TaskAssigner")
+  tasksReceived       Task[]             @relation("TaskAssignee")
+  prescriptions       Prescription[]
+  dischargesCompleted DischargeSummary[] @relation("DischargeCompleter")
+  dischargesApproved  DischargeSummary[] @relation("DischargeApprover")
+  summariesApproved   ProblemSummary[]
+  clinicalNotes       ClinicalNote[]
+  auditEvents         AuditEvent[]
+  triagesSubmitted    TriageAssessment[] @relation("TriageSubmitter")
+  triagesReviewed     TriageAssessment[] @relation("TriageReviewer")
+
+  @@index([role, status])
+}
+
+model RefreshToken {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// SHA-256 of the opaque token; the raw value only ever lives in the cookie.
+  tokenHash  String    @unique
+  /// Whether the cookie was issued as persistent ("keep me signed in").
+  persistent Boolean   @default(false)
+  expiresAt  DateTime
+  /// Set when exchanged for a newer token. Briefly honoured (parallel tabs), then a replay alarm.
+  rotatedAt  DateTime?
+  /// Set on logout, suspension or a detected replay. Never honoured again.
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  userAgent  String?
+  ip         String?
+
+  @@index([userId])
+}
+
+/// One-time link that lets an invited user choose their password.
+model SetupToken {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([userId])
+}
+
+/// Monotonic counters for human-readable identifiers (P-1009, INV-4477, …).
+model Counter {
+  key   String @id
+  value Int
+}
+
+model Patient {
+  id          String   @id
+  mrn         String   @unique
+  name        String
+  dateOfBirth DateTime @db.Date
+  sex         String
+  phone       String
+  bloodGroup  String
+  conditions  String[]
+  allergies   String[]
+  lastVisitAt DateTime
+  risk        String   @default("normal")
+  department  String
+  departmentRef Department @relation(fields: [department], references: [name], onUpdate: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user              User?
+  appointments      Appointment[]
+  vitals            Vitals[]
+  tasks             Task[]
+  labTests          LabTest[]
+  prescriptions     Prescription[]
+  invoices          Invoice[]
+  dischargeSummaries DischargeSummary[]
+  problemSummary    ProblemSummary?
+  clinicalNotes     ClinicalNote[]
+  dietPlan          DietPlan?
+  glucoseReadings   GlucoseReading[]
+  triageAssessments TriageAssessment[]
+
+  @@index([name])
+}
+
+model Appointment {
+  id         String   @id
+  patientId  String
+  patient    Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  /// Display name of the clinician; doctorId links it to a user when one exists.
+  doctor     String
+  doctorId   String?
+  doctorUser User?    @relation("AppointmentDoctor", fields: [doctorId], references: [id], onDelete: SetNull)
+  department String
+  departmentRef Department @relation(fields: [department], references: [name], onUpdate: Cascade)
+  date       DateTime @db.Date
+  /// Clinic-local wall time, HH:mm.
+  time       String
+  type       String
+  status     String
+  source     String
+  reason     String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([date])
+  @@index([patientId])
+}
+
+model Vitals {
+  id            String   @id
+  patientId     String
+  patient       Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  recordedAt    DateTime
+  recordedBy    String
+  recordedById  String?
+  recorder      User?    @relation("VitalsRecorder", fields: [recordedById], references: [id], onDelete: SetNull)
+  systolic      Int
+  diastolic     Int
+  heartRate     Int
+  temperatureF  Float
+  spo2          Int
+  weightKg      Float
+  severity      String
+
+  @@index([patientId, recordedAt])
+}
+
+model Task {
+  id           String   @id
+  title        String
+  kind         String
+  patientId    String
+  patient      Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  assignedById String
+  assignedBy   User     @relation("TaskAssigner", fields: [assignedById], references: [id])
+  assignedToId String
+  assignedTo   User     @relation("TaskAssignee", fields: [assignedToId], references: [id])
+  due          DateTime
+  status       String   @default("open")
+  severity     String   @default("normal")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([assignedToId])
+}
+
+model LabTest {
+  id             String    @id
+  patientId      String
+  patient        Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  testName       String
+  category       String
+  price          Decimal   @db.Decimal(10, 2)
+  status         String    @default("booked")
+  result         String?
+  orderedAt      DateTime
+  reportUploaded Boolean   @default(false)
+  /// True until a clinician has reviewed the released report.
+  isNew          Boolean   @default(false)
+  releasedAt     DateTime?
+
+  @@index([patientId])
+  @@index([status])
+}
+
+model LabCatalogueItem {
+  id         String  @id
+  name       String  @unique
+  category   String
+  price      Decimal @db.Decimal(10, 2)
+  turnaround String
+  active     Boolean @default(true)
+}
+
+model Prescription {
+  id           String     @id
+  patientId    String
+  patient      Patient    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctorId     String
+  doctor       User       @relation(fields: [doctorId], references: [id])
+  issuedAt     DateTime
+  refillsLeft  Int
+  refillsTotal Int
+  notes        String
+  medicines    Medicine[]
+
+  @@index([patientId])
+}
+
+model Medicine {
+  id             String       @id
+  prescriptionId String
+  prescription   Prescription @relation(fields: [prescriptionId], references: [id], onDelete: Cascade)
+  name           String
+  dosage         String
+  frequency      String
+  durationDays   Int
+  /// Sent to the pharmacy (by the patient, ward or prescriber).
+  ordered        Boolean      @default(false)
+  orderedAt      DateTime?
+  /// Handed over by the pharmacy.
+  dispensedAt    DateTime?
+  position       Int          @default(0)
+}
+
+model InventoryItem {
+  id                 String    @id
+  name               String    @unique
+  category           String
+  stock              Int
+  reorderLevel       Int
+  expiry             DateTime  @db.Date
+  price              Decimal   @db.Decimal(10, 2)
+  reorderRequestedAt DateTime?
+}
+
+model Invoice {
+  id          String    @id
+  patientId   String
+  patient     Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  amount      Decimal   @db.Decimal(12, 2)
+  status      String    @default("unpaid")
+  description String?
+  issuedAt    DateTime
+  method      String?
+  paidAt      DateTime?
+
+  @@index([patientId])
+  @@index([status])
+}
+
+model DischargeSummary {
+  id            String   @id
+  patientId     String
+  patient       Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  admissionDate DateTime @db.Date
+  dischargeDate DateTime @db.Date
+  diagnosis     String
+  status        String   @default("draft")
+  completedById String
+  completedBy   User     @relation("DischargeCompleter", fields: [completedById], references: [id])
+  approvedById  String?
+  approvedBy    User?    @relation("DischargeApprover", fields: [approvedById], references: [id])
+  updatedAt     DateTime @updatedAt
+}
+
+model ProblemSummary {
+  patientId    String   @id
+  patient      Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  headline     String
+  issues       String[]
+  aiGenerated  Boolean  @default(false)
+  approvedById String?
+  approvedBy   User?    @relation(fields: [approvedById], references: [id])
+  updatedAt    DateTime
+}
+
+model ClinicalNote {
+  id        String   @id
+  patientId String
+  patient   Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([patientId, createdAt])
+}
+
+model DietPlan {
+  patientId     String   @id
+  patient       Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  goal          String
+  dailyCalories Int
+  restrictions  String[]
+  /// [{ meal, items, calories }]
+  entries       Json
+}
+
+model GlucoseReading {
+  id        String   @id @default(cuid())
+  patientId String
+  patient   Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  date      DateTime @db.Date
+  value     Int
+
+  @@index([patientId, date])
+}
+
+/// Append-only. No route updates or deletes rows here.
+model AuditEvent {
+  id        String   @id
+  actorId   String?
+  actorUser User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  actor     String
+  role      String
+  action    String
+  target    String
+  severity  String   @default("normal")
+  ip        String?
+  at        DateTime @default(now())
+
+  @@index([at])
+}
+
+model Notification {
+  id          String    @id
+  recipientId String
+  recipient   User      @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  title       String
+  body        String
+  severity    String    @default("normal")
+  at          DateTime  @default(now())
+  readAt      DateTime?
+
+  @@index([recipientId, at])
+}
+
+model SystemSetting {
+  key      String @id
+  label    String
+  value    String
+  position Int    @default(0)
+}
+
+model Department {
+  name     String  @id
+  /// Inactive departments keep their history but take no new patients or bookings.
+  active   Boolean @default(true)
+  position Int     @default(0)
+
+  patients     Patient[]
+  appointments Appointment[]
+  triageAssessments TriageAssessment[]
+}
+
+/// Clinic-wide settings. Exactly one row (id = 1).
+model Clinic {
+  id               Int      @id @default(1)
+  name             String
+  /// ISO 4217 code, e.g. GHS.
+  currency         String
+  /// BCP 47 locale used for numbers and dates, e.g. en-GH.
+  locale           String
+  /// IANA time zone that defines the clinic day, e.g. Africa/Accra.
+  timeZone         String
+  /// Bookable start times (HH:mm, clinic time) offered to patients.
+  appointmentSlots String[]
+  paymentMethods   String[]
+  /// Shown when a booking has no named clinician yet.
+  defaultClinician String
+  /// Number patients are told to call when a symptom check finds an emergency.
+  emergencyNumber  String   @default("112")
+  updatedAt        DateTime @updatedAt
+}
+
+/// Curated patient-education tips, matched to a patient's recorded conditions.
+model HealthTip {
+  id         String   @id
+  category   String
+  title      String
+  body       String
+  /// Lower-case terms matched as whole words against Patient.conditions. Empty = general advice.
+  conditions String[]
+  active     Boolean  @default(true)
+  position   Int      @default(0)
+  updatedAt  DateTime @updatedAt
+}
+
+/// One OLDCARTS symptom check: the patient's answers and the assessment returned to them.
+model TriageAssessment {
+  id              String      @id
+  patientId       String
+  patient         Patient     @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  submittedById   String
+  submittedBy     User        @relation("TriageSubmitter", fields: [submittedById], references: [id])
+  /// { chiefComplaint, onset, location, duration, character, aggravating, relieving, radiation, timing, severity, associated }
+  answers         Json
+  /// emergency | urgent | soon | routine | self_care
+  urgency         String
+  department      String?
+  departmentRef   Department? @relation(fields: [department], references: [name], onUpdate: Cascade, onDelete: SetNull)
+  /// Clinician-facing OLDCARTS summary.
+  clinicalSummary String
+  /// What the patient was told to do.
+  patientAdvice   String
+  redFlags        String[]
+  /// Possibilities for the care team to consider; never shown to the patient.
+  considerations  String[]
+  /// ai = model assessment (with rule safety floor); rules = model unavailable, rules only.
+  source          String
+  model           String?
+  createdAt       DateTime    @default(now())
+  reviewedById    String?
+  reviewedBy      User?       @relation("TriageReviewer", fields: [reviewedById], references: [id])
+  reviewedAt      DateTime?
+
+  @@index([patientId, createdAt])
+  @@index([createdAt])
+}

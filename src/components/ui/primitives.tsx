@@ -280,9 +280,7 @@ export function EmptyState({ message, hint }: { message: string; hint?: string }
 
 export function Button({
   children,
-  onClick = () => {
-    window.dispatchEvent(new CustomEvent('medora:demo-action'))
-  },
+  onClick,
   variant = 'secondary',
   type = 'button',
   disabled = false,

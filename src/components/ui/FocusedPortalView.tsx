@@ -1,6 +1,5 @@
 import type { LucideIcon } from 'lucide-react'
 import { ArrowRight, CheckCircle2 } from 'lucide-react'
-import { useState } from 'react'
 import { Button, Card, CardHeader, MetricTile } from './primitives'
 
 export interface FocusedPortalMetric {
@@ -35,13 +34,6 @@ export function FocusedPortalView({
   onAction?: () => void
   emptyMessage?: string
 }) {
-  const [actionDone, setActionDone] = useState(false)
-
-  function runAction() {
-    onAction?.()
-    setActionDone(true)
-  }
-
   return (
     <div className="space-y-6">
       <div className="rounded-3xl border border-cyan-100 bg-gradient-to-br from-white via-cyan-50/70 to-emerald-50/70 p-6 shadow-sm sm:p-8">
@@ -54,10 +46,12 @@ export function FocusedPortalView({
             <h2 className="mt-1 text-2xl font-bold tracking-tight text-cyan-950">{title}</h2>
             <p className="mt-2 text-sm leading-relaxed text-cyan-700">{description}</p>
           </div>
-          <Button variant="primary" onClick={runAction}>
-            {actionDone ? 'Saved successfully' : actionLabel}
-            {actionDone ? <CheckCircle2 className="h-4 w-4" aria-hidden="true" /> : <ArrowRight className="h-4 w-4" aria-hidden="true" />}
-          </Button>
+          {onAction ? (
+            <Button variant="primary" onClick={onAction}>
+              {actionLabel}
+              <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </Button>
+          ) : null}
         </div>
       </div>
 

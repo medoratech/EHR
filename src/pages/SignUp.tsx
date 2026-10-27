@@ -1,8 +1,11 @@
-import { Building2, CheckCircle2, Lock, Mail, UserPlus, UserRound } from 'lucide-react'
+import { Building2, CalendarDays, CheckCircle2, Lock, Mail, UserPlus, UserRound } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { AuthLayout, RoleSelector, type RoleOption } from '../components/layout/AuthLayout'
 import { roleOptions } from '../components/layout/roles'
+import type { Sex } from '../data/types'
+import { ApiError } from '../lib/http'
+import { useAuth } from '../state/useAuth'
 
 const inputClass =
   'h-11 w-full rounded-xl border border-cyan-200 bg-cyan-50/60 pr-4 pl-10 text-sm text-cyan-900 shadow-inner shadow-cyan-900/5 placeholder:text-cyan-500 focus:border-cyan-500 focus:bg-white focus:ring-2 focus:ring-cyan-100'
@@ -11,21 +14,70 @@ const steps = ['Your details', 'Your role', 'Confirm']
 
 export function SignUp() {
   const navigate = useNavigate()
+  const { register } = useAuth()
   const [role, setRole] = useState<RoleOption>(roleOptions[0])
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [pending, setPending] = useState(false)
 
   const passwordsMatch = confirm.length === 0 || password === confirm
+  const isPatient = role.role === 'patient'
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (password !== confirm) {
       setError('Passwords do not match. Please check and try again.')
       return
     }
+    const form = new FormData(event.currentTarget)
+    const field = (name: string) => String(form.get(name) ?? '').trim() || undefined
     setError('')
-    navigate(role.to)
+    setBusy(true)
+    try {
+      const result = await register({
+        name: field('name') ?? '',
+        email: field('email') ?? '',
+        password,
+        role: role.role,
+        organisation: isPatient ? undefined : field('organisation'),
+        dateOfBirth: isPatient ? field('dateOfBirth') : undefined,
+        sex: isPatient ? (field('sex') as Sex | undefined) : undefined,
+      })
+      if (result.status === 'active') navigate(result.user.home, { replace: true })
+      else setPending(true)
+    } catch (caught) {
+      setError(caught instanceof ApiError ? caught.message : 'We could not create your account. Please try again.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (pending) {
+    return (
+      <AuthLayout
+        formId="sign-up-form"
+        heading="Request received"
+        subheading="An administrator will review your access."
+        panelTitle="Join the care teams already on Medora."
+        panelBody="Staff accounts are approved by your organisation's administrator before first sign-in, so patient records stay protected."
+        bullets={['Role-based access control', 'Audit-ready activity trail', 'Real-time care coordination']}
+      >
+        <div className="mt-7 rounded-2xl bg-emerald-50 p-6 text-emerald-800" role="status">
+          <CheckCircle2 className="h-8 w-8" aria-hidden="true" />
+          <p className="mt-3 font-semibold">Your {role.label.toLowerCase()} account is awaiting approval.</p>
+          <p className="mt-1 text-sm">
+            You can sign in with the password you chose as soon as an administrator activates your access.
+          </p>
+        </div>
+        <p className="mt-6 text-center text-sm text-cyan-700">
+          <Link to="/login" className="font-semibold text-cyan-800 underline underline-offset-2 hover:text-cyan-950">
+            Back to sign in
+          </Link>
+        </p>
+      </AuthLayout>
+    )
   }
 
   return (
@@ -70,6 +122,7 @@ export function SignUp() {
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">
+          {isPatient ? null : (
           <div>
             <label htmlFor="sign-up-org" className="block text-sm font-semibold text-cyan-900">
               Organisation
@@ -90,10 +143,11 @@ export function SignUp() {
               />
             </div>
           </div>
+          )}
 
           <div>
             <label htmlFor="sign-up-email" className="block text-sm font-semibold text-cyan-900">
-              Work email
+              {isPatient ? 'Email' : 'Work email'}
             </label>
             <div className="relative mt-1.5">
               <Mail
@@ -116,12 +170,48 @@ export function SignUp() {
         <div>
           <p className="block text-sm font-semibold text-cyan-900">Your role</p>
           <p className="mt-0.5 text-xs text-cyan-600">
-            This sets which dashboard you land on. You can change it later.
+            Patients get access straight away. Staff accounts are approved by an administrator.
           </p>
           <div className="mt-2.5">
             <RoleSelector options={roleOptions} value={role} onChange={setRole} />
           </div>
         </div>
+
+        {isPatient ? (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label htmlFor="sign-up-dob" className="block text-sm font-semibold text-cyan-900">
+                Date of birth
+              </label>
+              <div className="relative mt-1.5">
+                <CalendarDays
+                  className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-cyan-500"
+                  aria-hidden="true"
+                />
+                <input id="sign-up-dob" name="dateOfBirth" type="date" required autoComplete="bday" className={inputClass} />
+              </div>
+            </div>
+            <div>
+              <label htmlFor="sign-up-sex" className="block text-sm font-semibold text-cyan-900">
+                Sex
+              </label>
+              <select
+                id="sign-up-sex"
+                name="sex"
+                required
+                defaultValue=""
+                className="mt-1.5 h-11 w-full rounded-xl border border-cyan-200 bg-cyan-50/60 px-3 text-sm text-cyan-900"
+              >
+                <option value="" disabled>
+                  Select
+                </option>
+                <option value="female">Female</option>
+                <option value="male">Male</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+          </div>
+        ) : null}
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
@@ -215,9 +305,10 @@ export function SignUp() {
 
         <button
           type="submit"
-          className="inline-flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-700 to-cyan-500 px-4 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:opacity-90"
+          disabled={busy}
+          className="inline-flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-700 to-cyan-500 px-4 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:opacity-90 disabled:cursor-wait disabled:opacity-70"
         >
-          Create account
+          {busy ? 'Creating account…' : isPatient ? 'Create account' : 'Request access'}
           <UserPlus className="h-4 w-4" aria-hidden="true" />
         </button>
       </form>

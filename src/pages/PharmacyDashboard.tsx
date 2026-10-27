@@ -12,15 +12,14 @@ import {
   StatusPill,
 } from '../components/ui/primitives'
 import { DataTable } from '../components/ui/Table'
-import { getPatientName, inventory } from '../data/api'
+import type { InventoryItem } from '../data/types'
+import { todayKey } from '../lib/clock'
 import { formatCurrency, formatDate } from '../lib/format'
-import { useDemoStore } from '../state/useDemoStore'
-import { announceDemoAction } from '../lib/demoActions'
-import { DemoWorkspace, WorkspaceField } from '../components/ui/DemoWorkspace'
+import { useEhr } from '../state/useEhr'
+import { Workspace, WorkspaceField, WorkspaceSelect } from '../components/ui/Workspace'
 import { FocusedPortalView } from '../components/ui/FocusedPortalView'
-import { demoNow } from '../lib/demoClock'
 
-function priceFor(medicineName: string): number | null {
+function priceFor(inventory: InventoryItem[], medicineName: string): number | null {
   const target = medicineName.toLowerCase()
   const match =
     inventory.find((i) => i.name.toLowerCase().startsWith(target)) ??
@@ -30,9 +29,18 @@ function priceFor(medicineName: string): number | null {
 
 export function PharmacyDashboard() {
   const [searchParams] = useSearchParams()
-  const { prescriptions, orderMedicine, invoices } = useDemoStore()
-  const [dispensed, setDispensed] = useState<string[]>([])
-  const [restocked, setRestocked] = useState<string[]>([])
+  const {
+    prescriptions,
+    invoices,
+    inventory,
+    patients,
+    patientName: getPatientName,
+    dispenseMedicine,
+    sendRefillReminder,
+    requestReorder,
+    createInvoice,
+    clinic,
+  } = useEhr()
   const [workspaceOpen, setWorkspaceOpen] = useState(false)
 
   const outOfStock = inventory.filter((i) => i.stock === 0)
@@ -83,7 +91,14 @@ export function PharmacyDashboard() {
       },
     }[requestedView as 'inventory' | 'prescriptions' | 'refills']
 
-    if (viewContent) return <FocusedPortalView {...viewContent} onAction={() => setWorkspaceOpen(true)} />
+    if (viewContent) {
+      return (
+        <>
+          <FocusedPortalView {...viewContent} onAction={() => setWorkspaceOpen(true)} />
+          {renderWorkspace()}
+        </>
+      )
+    }
   }
 
   return (
@@ -180,7 +195,7 @@ export function PharmacyDashboard() {
               header: 'Expiry',
               render: (i) => {
                 const days = Math.round(
-                  (new Date(i.expiry).getTime() - demoNow().getTime()) / 86_400_000,
+                  (Date.parse(`${i.expiry}T00:00:00Z`) - Date.parse(`${todayKey()}T00:00:00Z`)) / 86_400_000,
                 )
                 if (days < 0) return <StatusPill tone="danger">Expired</StatusPill>
                 if (days < 60) return <StatusPill tone="warning">{days} days</StatusPill>
@@ -198,11 +213,11 @@ export function PharmacyDashboard() {
               header: 'Action',
               align: 'right',
               render: (i) =>
-                restocked.includes(i.id) ? (
+                i.reorderRequestedAt ? (
                   <StatusPill tone="positive">Order raised</StatusPill>
                 ) : (
                   <Button
-                    onClick={() => setRestocked((prev) => [...prev, i.id])}
+                    onClick={() => void requestReorder(i.id)}
                     disabled={i.stock > i.reorderLevel}
                   >
                     Reorder
@@ -235,15 +250,12 @@ export function PharmacyDashboard() {
                     {getPatientName(m.prescription.patientId)} · {m.prescription.doctor}
                   </p>
                 </div>
-                {dispensed.includes(m.id) ? (
+                {m.dispensed ? (
                   <StatusPill tone="positive">Dispensed</StatusPill>
                 ) : (
                   <Button
                     variant="primary"
-                    onClick={() => {
-                      setDispensed((prev) => [...prev, m.id])
-                      orderMedicine(m.prescription.id, m.id)
-                    }}
+                    onClick={() => void dispenseMedicine(m.prescription.id, m.id)}
                   >
                     Dispense
                   </Button>
@@ -282,7 +294,7 @@ export function PharmacyDashboard() {
                   {exhausted ? (
                     <StatusPill tone="danger">Refill needed</StatusPill>
                   ) : (
-                    <Button onClick={() => announceDemoAction(`Refill reminder sent for ${getPatientName(p.patientId)}.`)}>
+                    <Button onClick={() => void sendRefillReminder(p.id)}>
                       <RefreshCcw className="h-4 w-4" aria-hidden="true" />
                       Send reminder
                     </Button>
@@ -327,7 +339,7 @@ export function PharmacyDashboard() {
               header: 'Amount',
               align: 'right',
               render: (row) => {
-                const price = priceFor(row.medicine.name)
+                const price = priceFor(inventory, row.medicine.name)
                 if (price === null) return <span className="text-cyan-700">—</span>
                 return (
                   <span className="tabular">
@@ -355,33 +367,64 @@ export function PharmacyDashboard() {
               key: 'invoice',
               header: 'Invoice',
               align: 'right',
-              render: (row) => (
-                <Button onClick={() => announceDemoAction(`Invoice generated for ${row.medicine.name}.`)}>
-                  Generate
-                </Button>
-              ),
+              render: (row) => {
+                const price = priceFor(inventory, row.medicine.name)
+                return (
+                  <Button
+                    disabled={price === null}
+                    onClick={() =>
+                      price !== null &&
+                      void createInvoice({
+                        patientId: row.prescription.patientId,
+                        amount: Math.round(price * row.medicine.durationDays * 100) / 100,
+                        description: `${row.medicine.name} ${row.medicine.dosage} × ${row.medicine.durationDays} days`,
+                      })
+                    }
+                  >
+                    Generate
+                  </Button>
+                )
+              },
             },
           ]}
         />
       </Card>
-      {workspaceOpen ? (
-        <DemoWorkspace title="Create invoice" description="Prepare a clear medicine invoice for a patient order." action="Generate invoice" onClose={() => setWorkspaceOpen(false)}>
-          <WorkspaceField label="Patient">
-            <select className="mt-2 h-11 w-full rounded-xl border border-cyan-200 bg-cyan-50/50 px-3 text-sm font-normal text-cyan-900">
-              {prescriptions.map((prescription) => <option key={prescription.id}>{getPatientName(prescription.patientId)}</option>)}
-            </select>
-          </WorkspaceField>
-          <WorkspaceField label="Medicine or order reference" />
-          <div className="grid gap-4 sm:grid-cols-2">
-            <WorkspaceField label="Quantity" />
-            <WorkspaceField label="Payment status">
-              <select className="mt-2 h-11 w-full rounded-xl border border-cyan-200 bg-cyan-50/50 px-3 text-sm font-normal text-cyan-900">
-                <option>Pending</option><option>Paid</option>
-              </select>
-            </WorkspaceField>
-          </div>
-        </DemoWorkspace>
-      ) : null}
+      {renderWorkspace()}
     </>
   )
+
+  function renderWorkspace() {
+    if (!workspaceOpen) return null
+    return (
+      <Workspace
+        title="Create invoice"
+        description="Prepare a medicine invoice for a patient order."
+        action="Generate invoice"
+        onClose={() => setWorkspaceOpen(false)}
+        onComplete={(values) =>
+          createInvoice({
+            patientId: values.patientId,
+            amount: Number(values.amount),
+            description: values.description,
+            status: values.status === 'paid' ? 'paid' : 'unpaid',
+            method: values.status === 'paid' ? values.method : undefined,
+          })
+        }
+      >
+        <WorkspaceField label="Patient">
+          <WorkspaceSelect name="patientId" options={patients.map((p) => ({ value: p.id, label: `${p.name} · ${p.mrn}` }))} />
+        </WorkspaceField>
+        <WorkspaceField label="Medicine or order reference" name="description" />
+        <div className="grid gap-4 sm:grid-cols-3">
+          <WorkspaceField label="Amount" name="amount" type="number" min={0.01} step={0.01} />
+          <WorkspaceField label="Payment status">
+            <WorkspaceSelect name="status" options={[{ value: 'unpaid', label: 'Pending' }, { value: 'paid', label: 'Paid' }]} />
+          </WorkspaceField>
+          <WorkspaceField label="Method (if paid)">
+            <WorkspaceSelect name="method" options={(clinic?.paymentMethods ?? []).map((m) => ({ value: m, label: m }))} />
+          </WorkspaceField>
+        </div>
+      </Workspace>
+    )
+  }
 }

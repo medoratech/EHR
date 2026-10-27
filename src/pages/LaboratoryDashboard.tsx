@@ -13,12 +13,17 @@ import {
 } from '../components/ui/primitives'
 import { DataTable } from '../components/ui/Table'
 import { BarChart, PieChart } from '../components/ui/Chart'
-import { countBy, getPatientName, testsForBooking } from '../data/api'
+import { countBy } from '../data/api'
 import { formatCurrency, humanize } from '../lib/format'
 import type { LabStatus } from '../data/types'
-import { useDemoStore } from '../state/useDemoStore'
-import { DemoWorkspace, WorkspaceField } from '../components/ui/DemoWorkspace'
+import { useEhr } from '../state/useEhr'
+import { Workspace, WorkspaceField, WorkspaceSelect } from '../components/ui/Workspace'
 import { FocusedPortalView } from '../components/ui/FocusedPortalView'
+
+const NEXT_STATUS: Partial<Record<LabStatus, LabStatus>> = {
+  booked: 'sample-collected',
+  'sample-collected': 'processing',
+}
 
 const statusTone: Record<LabStatus, Tone> = {
   booked: 'neutral',
@@ -29,8 +34,9 @@ const statusTone: Record<LabStatus, Tone> = {
 
 export function LaboratoryDashboard() {
   const [searchParams] = useSearchParams()
-  const { labTests, releaseLabReport } = useDemoStore()
-  const [workspaceOpen, setWorkspaceOpen] = useState(false)
+  const { labTests, labCatalogue, patientName: getPatientName, releaseLabReport, setLabStatus } = useEhr()
+  const [releasing, setReleasing] = useState<string | null>(null)
+  const testsForBooking = labCatalogue.filter((test) => test.active)
 
   const pendingUpload = labTests.filter((l) => l.status !== 'completed' && !l.reportUploaded)
   const actionable = [...pendingUpload, ...labTests.filter((l) => l.isNew && l.reportUploaded)]
@@ -65,7 +71,7 @@ export function LaboratoryDashboard() {
       },
       catalogue: {
         title: 'Test catalogue',
-        description: 'Keep bookable laboratory services, preparation guidance and Indian Rupee pricing easy to compare.',
+        description: 'Keep bookable laboratory services, preparation guidance and pricing easy to compare.',
         icon: FlaskConical,
         metrics: [
           { label: 'Bookable services', value: testsForBooking.length, hint: 'Available to patients' },
@@ -76,7 +82,17 @@ export function LaboratoryDashboard() {
       },
     }[requestedView as 'queue' | 'reports' | 'catalogue']
 
-    if (viewContent) return <FocusedPortalView {...viewContent} onAction={() => setWorkspaceOpen(true)} />
+    if (viewContent) {
+      return (
+        <>
+          <FocusedPortalView
+            {...viewContent}
+            onAction={requestedView === 'reports' && pendingUpload.length ? () => setReleasing(pendingUpload[0].id) : undefined}
+          />
+          {renderWorkspace()}
+        </>
+      )
+    }
   }
 
   return (
@@ -86,7 +102,11 @@ export function LaboratoryDashboard() {
         subtitle="Test throughput, report upload and the bookable catalogue."
         icon={<FlaskConical className="h-6 w-6" aria-hidden="true" />}
         actions={
-          <Button variant="primary" onClick={() => setWorkspaceOpen(true)}>
+          <Button
+            variant="primary"
+            disabled={pendingUpload.length === 0}
+            onClick={() => pendingUpload[0] && setReleasing(pendingUpload[0].id)}
+          >
             <Upload className="h-4 w-4" aria-hidden="true" />
             Upload report
           </Button>
@@ -197,12 +217,19 @@ export function LaboratoryDashboard() {
                 header: 'Action',
                 align: 'right',
                 render: (l) =>
-                  l.status === 'completed' && l.reportUploaded ? (
+                  l.reportUploaded ? (
                     <StatusPill tone="positive">Released</StatusPill>
                   ) : (
-                    <Button onClick={() => releaseLabReport(l.id)}>
-                      Upload PDF
-                    </Button>
+                    <span className="flex justify-end gap-2">
+                      {NEXT_STATUS[l.status] ? (
+                        <Button onClick={() => void setLabStatus(l.id, NEXT_STATUS[l.status]!)}>
+                          {humanize(NEXT_STATUS[l.status]!)}
+                        </Button>
+                      ) : null}
+                      <Button variant="primary" onClick={() => setReleasing(l.id)}>
+                        Release
+                      </Button>
+                    </span>
                   ),
               },
             ]}
@@ -256,7 +283,7 @@ export function LaboratoryDashboard() {
           <DataTable
             caption="Available laboratory tests with pricing"
             rows={testsForBooking}
-            rowKey={(t) => t.name}
+            rowKey={(t) => t.id}
             columns={[
               {
                 key: 'name',
@@ -298,19 +325,35 @@ export function LaboratoryDashboard() {
           data={Object.entries(labCategoryCounts).map(([label, value]) => ({ label, value }))}
         />
       </Card>
-      {workspaceOpen ? (
-        <DemoWorkspace title="Upload report" description="Attach a result and release it securely to the care team." action="Release report" onClose={() => setWorkspaceOpen(false)}>
-          <WorkspaceField label="Patient or test">
-            <select className="mt-2 h-11 w-full rounded-xl border border-cyan-200 bg-cyan-50/50 px-3 text-sm font-normal text-cyan-900">
-              {labTests.map((test) => <option key={test.id}>{getPatientName(test.patientId)} · {test.testName}</option>)}
-            </select>
-          </WorkspaceField>
-          <WorkspaceField label="Report file">
-            <input type="file" required className="mt-2 block w-full rounded-xl border border-cyan-200 bg-cyan-50/50 p-3 text-sm font-normal text-cyan-700" />
-          </WorkspaceField>
-          <WorkspaceField label="Result summary" />
-        </DemoWorkspace>
-      ) : null}
+      {renderWorkspace()}
     </>
   )
+
+  function renderWorkspace() {
+    if (!releasing) return null
+    return (
+      <Workspace
+        title="Release report"
+        description="Attach the result and release it to the doctor and patient views. Released reports are locked."
+        action="Release report"
+        onClose={() => setReleasing(null)}
+        onComplete={(values) => releaseLabReport(values.testId, values.result)}
+      >
+        <WorkspaceField label="Patient and test">
+          <WorkspaceSelect
+            name="testId"
+            defaultValue={releasing}
+            options={pendingUpload.map((test) => ({
+              value: test.id,
+              label: `${getPatientName(test.patientId)} · ${test.testName}`,
+            }))}
+          />
+        </WorkspaceField>
+        <WorkspaceField label="Report file (optional)">
+          <input name="file" type="file" className="mt-2 block w-full rounded-xl border border-cyan-200 bg-cyan-50/50 p-3 text-sm font-normal text-cyan-700" />
+        </WorkspaceField>
+        <WorkspaceField label="Result summary" name="result" placeholder="e.g. Troponin I 0.02 ng/mL — negative" />
+      </Workspace>
+    )
+  }
 }

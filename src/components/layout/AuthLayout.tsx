@@ -2,11 +2,13 @@ import { ArrowLeft, HeartPulse, type LucideIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router'
 import { Parallax } from '../ui/Parallax'
+import type { Role } from '../../data/types'
 
 export interface RoleOption {
   label: string
   description: string
   to: string
+  role: Role
   icon: LucideIcon
 }
 

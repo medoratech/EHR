@@ -3,18 +3,15 @@ import { useState } from 'react'
 import { useSearchParams } from 'react-router'
 import { Avatar, Button, Card, CardHeader, MetricTile, PageHeader, StatusPill } from '../components/ui/primitives'
 import { DataTable } from '../components/ui/Table'
-import {
-  draftDischarges,
-  getPatientName,
-  patientInitials,
-  todayKey,
-} from '../data/api'
+import { patientInitials } from '../data/api'
 import { formatCurrency, formatDate } from '../lib/format'
-import type { Appointment } from '../data/types'
-import { useDemoStore } from '../state/useDemoStore'
-import { DemoWorkspace, WorkspaceField } from '../components/ui/DemoWorkspace'
+import type { Appointment, Invoice } from '../data/types'
+import { minutesOfDay, todayKey } from '../lib/clock'
+import { useEhr } from '../state/useEhr'
+import { Workspace, WorkspaceField, WorkspaceSelect } from '../components/ui/Workspace'
 import { FocusedPortalView } from '../components/ui/FocusedPortalView'
-import { demoNow } from '../lib/demoClock'
+import { PatientFields } from '../components/ui/PatientFields'
+import { readPatient } from '../components/ui/readPatient'
 
 function minutesOf(time: string): number {
   const [hours, minutes] = time.split(':').map(Number)
@@ -23,13 +20,23 @@ function minutesOf(time: string): number {
 
 export function ReceptionistDashboard() {
   const [searchParams] = useSearchParams()
-  const { appointments, invoices, updateAppointment, updateInvoice } = useDemoStore()
+  const {
+    appointments,
+    invoices,
+    dischargeSummaries,
+    patientName: getPatientName,
+    setAppointmentStatus,
+    payInvoice,
+    registerWalkIn,
+    clinic,
+  } = useEhr()
   const [printed, setPrinted] = useState<string[]>([])
   const [workspaceOpen, setWorkspaceOpen] = useState(false)
+  const [paying, setPaying] = useState<Invoice | null>(null)
 
   const today = appointments.filter((appointment) => appointment.date === todayKey())
-  const now = demoNow()
-  const nowMinutes = now.getHours() * 60 + now.getMinutes()
+  const nowMinutes = minutesOfDay()
+  const draftDischarges = dischargeSummaries.filter((d) => d.status !== 'doctor-approved')
 
   function isConfirmed(a: Appointment) {
     return a.status === 'confirmed'
@@ -85,7 +92,7 @@ export function ReceptionistDashboard() {
       },
       billing: {
         title: 'Billing',
-        description: 'Review outstanding invoices, payment status and Indian Rupee receipts without visual clutter.',
+        description: 'Review outstanding invoices, payment status and receipts without visual clutter.',
         icon: Banknote,
         metrics: [
           { label: 'Outstanding', value: formatCurrency(outstanding), hint: `${openInvoices.length} open invoices` },
@@ -107,7 +114,14 @@ export function ReceptionistDashboard() {
       },
     }[requestedView as 'appointments' | 'billing' | 'discharges']
 
-    if (viewContent) return <FocusedPortalView {...viewContent} onAction={() => setWorkspaceOpen(true)} />
+    if (viewContent) {
+      return (
+        <>
+          <FocusedPortalView {...viewContent} onAction={() => setWorkspaceOpen(true)} />
+          {renderWorkspace()}
+        </>
+      )
+    }
   }
 
   return (
@@ -252,12 +266,18 @@ export function ReceptionistDashboard() {
               header: 'Action',
               align: 'right',
               render: (a) =>
-                a.status === 'completed' || isConfirmed(a) ? (
+                a.status === 'completed' ? (
                   <span className="text-sm text-cyan-700">—</span>
+                ) : isConfirmed(a) ? (
+                  a.date === todayKey() ? (
+                    <Button onClick={() => void setAppointmentStatus(a.id, 'completed')}>Check out</Button>
+                  ) : (
+                    <span className="text-sm text-cyan-700">—</span>
+                  )
                 ) : (
                   <Button
                     variant="primary"
-                    onClick={() => updateAppointment(a.id, 'confirmed')}
+                    onClick={() => void setAppointmentStatus(a.id, 'confirmed')}
                   >
                     Approve
                   </Button>
@@ -316,7 +336,7 @@ export function ReceptionistDashboard() {
                       Print
                     </Button>
                   ) : (
-                    <Button variant="primary" onClick={() => updateInvoice(i.id, 'paid', 'Reception desk')}>
+                    <Button variant="primary" onClick={() => setPaying(i)}>
                       Mark paid
                     </Button>
                   ),
@@ -358,20 +378,54 @@ export function ReceptionistDashboard() {
           </ul>
         </Card>
       </div>
-      {workspaceOpen ? (
-        <DemoWorkspace title="Register walk-in" description="Add a patient to today's front-desk flow." action="Add to queue" onClose={() => setWorkspaceOpen(false)}>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <WorkspaceField label="Patient name" />
-            <WorkspaceField label="Phone number" />
-          </div>
-          <WorkspaceField label="Consulting department">
-            <select className="mt-2 h-11 w-full rounded-xl border border-cyan-200 bg-cyan-50/50 px-3 text-sm font-normal text-cyan-900">
-              <option>General Medicine</option><option>Cardiology</option><option>Endocrinology</option>
-            </select>
-          </WorkspaceField>
-          <WorkspaceField label="Reason for visit" />
-        </DemoWorkspace>
-      ) : null}
+      {renderWorkspace()}
     </>
   )
+
+  function renderWorkspace() {
+    if (paying) {
+      const methods = clinic?.paymentMethods ?? []
+      return (
+        <Workspace
+          title={`Record payment · ${paying.id}`}
+          description={`${getPatientName(paying.patientId)} · ${formatCurrency(paying.amount)}${paying.status === 'partial' ? ' · balance of a part payment' : ''}`}
+          action="Record payment"
+          onClose={() => setPaying(null)}
+          onComplete={(values) => payInvoice(paying.id, values.status === 'partial' ? 'partial' : 'paid', values.method)}
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            <WorkspaceField label="Payment method">
+              <WorkspaceSelect
+                name="method"
+                defaultValue={paying.method && methods.includes(paying.method) ? paying.method : undefined}
+                options={methods.map((method) => ({ value: method, label: method }))}
+              />
+            </WorkspaceField>
+            <WorkspaceField label="Amount received">
+              <WorkspaceSelect
+                name="status"
+                options={[
+                  { value: 'paid', label: 'Full balance' },
+                  ...(paying.status === 'unpaid' ? [{ value: 'partial', label: 'Part payment' }] : []),
+                ]}
+              />
+            </WorkspaceField>
+          </div>
+        </Workspace>
+      )
+    }
+    if (!workspaceOpen) return null
+    return (
+      <Workspace
+        title="Register walk-in"
+        description="Create the patient record and add them to today's queue."
+        action="Add to queue"
+        onClose={() => setWorkspaceOpen(false)}
+        onComplete={(values) => registerWalkIn({ ...readPatient(values), reason: values.reason })}
+      >
+        <PatientFields />
+        <WorkspaceField label="Reason for visit" name="reason" />
+      </Workspace>
+    )
+  }
 }

@@ -12,21 +12,15 @@ import {
   type Tone,
 } from '../components/ui/primitives'
 import { DataTable } from '../components/ui/Table'
-import {
-  draftDischarges,
-  getPatientName,
-  latestVitals,
-  patients,
-  patientInitials,
-} from '../data/api'
+import { latestVitals, patientInitials } from '../data/api'
+import { TASK_KIND_LABELS } from '../data/labels'
+import { clinicHour } from '../lib/clock'
 import { formatDate, formatDay, humanize } from '../lib/format'
-import type { Task, TaskStatus } from '../data/types'
-import { useDemoStore } from '../state/useDemoStore'
-import { announceDemoAction } from '../lib/demoActions'
-import { DemoWorkspace, WorkspaceField } from '../components/ui/DemoWorkspace'
+import type { DischargeSummary, Task, TaskStatus } from '../data/types'
+import { useAuth } from '../state/useAuth'
+import { useEhr } from '../state/useEhr'
+import { Workspace, WorkspaceField, WorkspaceSelect } from '../components/ui/Workspace'
 import { FocusedPortalView } from '../components/ui/FocusedPortalView'
-
-const CURRENT_STAFF = 'Nurse Grace Owusu'
 
 const statusTone: Record<TaskStatus, Tone> = {
   open: 'warning',
@@ -37,17 +31,26 @@ const statusTone: Record<TaskStatus, Tone> = {
 
 export function StaffDashboard() {
   const [searchParams] = useSearchParams()
-  const { tasks: liveTasks, updateTask } = useDemoStore()
-  const [taskState, setTaskState] = useState<Record<string, TaskStatus>>({})
-  const [verified, setVerified] = useState<string[]>([])
-  const [workspaceOpen, setWorkspaceOpen] = useState(false)
+  const { user } = useAuth()
+  const {
+    tasks: liveTasks,
+    patients,
+    vitals,
+    dischargeSummaries,
+    focusedPatient,
+    patientName: getPatientName,
+    updateTask,
+    recordVitals,
+    updateDischarge,
+  } = useEhr()
+  const [workspace, setWorkspace] = useState<{ kind: 'vitals' } | { kind: 'discharge'; summary: DischargeSummary } | null>(null)
 
-  const myTasks = liveTasks.filter((t) => t.assignedTo === CURRENT_STAFF)
-  const dueBeforeNoon = myTasks.filter((t) => new Date(t.due).getHours() < 12).length
+  const myTasks = liveTasks.filter((t) => t.assignedToId === user?.id && t.status !== 'done')
+  const dueBeforeNoon = myTasks.filter((t) => clinicHour(t.due) < 12).length
+  const draftDischarges = dischargeSummaries.filter((d) => d.status !== 'doctor-approved')
 
   function update(task: Task, status: TaskStatus) {
-    setTaskState((prev) => ({ ...prev, [task.id]: status }))
-    updateTask(task.id, status)
+    void updateTask(task.id, { status })
   }
 
   const openCount = liveTasks.filter((task) => task.status === 'open' || task.status === 'in-progress').length
@@ -64,7 +67,7 @@ export function StaffDashboard() {
           { label: 'Assigned to me', value: myTasks.length, hint: 'Current ward duties' },
           { label: 'Still open', value: openCount, hint: 'Across the care team' },
         ],
-        rows: myTasks.slice(0, 8).map((task) => ({ label: task.title, value: formatDay(task.due), detail: `${getPatientName(task.patientId)} · ${task.kind}`, status: task.status })),
+        rows: myTasks.slice(0, 8).map((task) => ({ label: task.title, value: formatDay(task.due), detail: `${getPatientName(task.patientId)} · ${TASK_KIND_LABELS[task.kind]}`, status: humanize(task.status) })),
         actionLabel: 'Open task queue',
       },
       vitals: {
@@ -73,9 +76,9 @@ export function StaffDashboard() {
         icon: Activity,
         metrics: [
           { label: 'Patients monitored', value: patients.length, hint: 'Ward records' },
-          { label: 'Critical readings', value: patients.filter((patient) => latestVitals(patient.id)?.severity === 'critical').length, hint: 'Needs immediate review' },
+          { label: 'Critical readings', value: patients.filter((patient) => latestVitals(vitals, patient.id)?.severity === 'critical').length, hint: 'Needs immediate review' },
         ],
-        rows: patients.slice(0, 8).map((patient) => ({ label: patient.name, value: latestVitals(patient.id)?.bloodPressure ?? 'No reading', detail: patient.department, status: latestVitals(patient.id) ? 'Recorded' : 'Awaiting update' })),
+        rows: patients.slice(0, 8).map((patient) => ({ label: patient.name, value: latestVitals(vitals, patient.id)?.bloodPressure ?? 'No reading', detail: patient.department, status: latestVitals(vitals, patient.id) ? 'Recorded' : 'Awaiting update' })),
         actionLabel: 'Record vitals',
       },
       discharges: {
@@ -86,12 +89,26 @@ export function StaffDashboard() {
           { label: 'Draft summaries', value: draftDischarges.length, hint: 'Waiting for sign-off' },
           { label: 'Sent back', value: revertedCount, hint: 'Doctor feedback required' },
         ],
-        rows: draftDischarges.slice(0, 8).map((item) => ({ label: getPatientName(item.patientId), value: formatDay(item.dischargeDate), detail: item.diagnosis, status: 'Needs review' })),
+        rows: draftDischarges.slice(0, 8).map((item) => ({ label: getPatientName(item.patientId), value: formatDay(item.dischargeDate), detail: item.diagnosis, status: item.status === 'draft' ? 'Needs review' : 'Awaiting doctor' })),
         actionLabel: 'Review discharge',
       },
     }[requestedView as 'tasks' | 'vitals' | 'discharges']
 
-    if (viewContent) return <FocusedPortalView {...viewContent} onAction={() => setWorkspaceOpen(true)} />
+    if (viewContent) {
+      const firstDraft = draftDischarges.find((d) => d.status === 'draft')
+      const onAction =
+        requestedView === 'vitals'
+          ? () => setWorkspace({ kind: 'vitals' })
+          : requestedView === 'discharges' && firstDraft
+            ? () => setWorkspace({ kind: 'discharge', summary: firstDraft })
+            : undefined
+      return (
+        <>
+          <FocusedPortalView {...viewContent} onAction={onAction} />
+          {renderWorkspace()}
+        </>
+      )
+    }
   }
 
   return (
@@ -101,7 +118,7 @@ export function StaffDashboard() {
         subtitle="Assigned duties, vitals capture and discharge summaries for your ward."
         icon={<ClipboardList className="h-6 w-6" aria-hidden="true" />}
         actions={
-          <Button variant="primary" onClick={() => setWorkspaceOpen(true)}>
+          <Button variant="primary" onClick={() => setWorkspace({ kind: 'vitals' })}>
             <Activity className="h-4 w-4" aria-hidden="true" />
             Record vitals
           </Button>
@@ -143,9 +160,12 @@ export function StaffDashboard() {
           description="Complete a task to send an update back to the assigning doctor"
           icon={<ClipboardList className="h-5 w-5" aria-hidden="true" />}
         />
+        {myTasks.length === 0 ? (
+          <p className="px-5 py-6 text-sm text-cyan-700">Nothing assigned to you right now.</p>
+        ) : null}
         <ul className="divide-y divide-cyan-100">
           {myTasks.map((t) => {
-            const status = taskState[t.id] ?? t.status
+            const status = t.status
             return (
               <li
                 key={t.id}
@@ -163,7 +183,7 @@ export function StaffDashboard() {
                       {getPatientName(t.patientId)} · due {formatDay(t.due)}
                     </p>
                     <p className="text-xs text-cyan-700">
-                      Assigned by {t.assignedBy} · {t.kind}
+                      Assigned by {t.assignedBy} · {TASK_KIND_LABELS[t.kind]}
                     </p>
                   </div>
                 </div>
@@ -175,9 +195,13 @@ export function StaffDashboard() {
                         onClick={() => update(t, 'in-progress')}
                         disabled={status === 'in-progress'}
                       >
-                        Start
+                        {status === 'reverted' ? 'Reopen' : 'Start'}
                       </Button>
-                      <Button variant="primary" onClick={() => update(t, 'done')}>
+                      <Button
+                        variant="primary"
+                        disabled={status === 'reverted'}
+                        onClick={() => update(t, 'done')}
+                      >
                         Mark done
                       </Button>
                     </>
@@ -216,7 +240,7 @@ export function StaffDashboard() {
                 key: 'entry',
                 header: 'Entry',
                 render: (p) => {
-                  const record = latestVitals(p.id)
+                  const record = latestVitals(vitals, p.id)
                   if (!record) return <span className="text-cyan-700">Not captured</span>
                   return (
                     <span className="tabular text-cyan-800">
@@ -229,7 +253,7 @@ export function StaffDashboard() {
                 key: 'severity',
                 header: 'Flag',
                 render: (p) => {
-                  const record = latestVitals(p.id)
+                  const record = latestVitals(vitals, p.id)
                   return record ? (
                     <StatusPill severity={record.severity}>{record.severity}</StatusPill>
                   ) : (
@@ -247,9 +271,11 @@ export function StaffDashboard() {
             description="Verify ward records before the doctor signs off"
             icon={<FileCheck2 className="h-5 w-5" aria-hidden="true" />}
           />
+          {draftDischarges.length === 0 ? (
+            <p className="px-5 py-6 text-sm text-cyan-700">No discharge summaries in progress.</p>
+          ) : null}
           <ul className="divide-y divide-cyan-100">
             {draftDischarges.map((d) => {
-              const isVerified = verified.includes(d.id)
               return (
                 <li key={d.id} className="px-5 py-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
@@ -264,18 +290,16 @@ export function StaffDashboard() {
                       </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-2">
-                      {d.status === 'doctor-approved' ? (
-                        <StatusPill tone="positive">Approved</StatusPill>
-                      ) : isVerified ? (
-                        <StatusPill tone="positive">Verified</StatusPill>
+                      {d.status === 'staff-verified' ? (
+                        <StatusPill tone="positive">Verified · awaiting doctor</StatusPill>
                       ) : (
                         <>
-                          <Button onClick={() => announceDemoAction(`Editing ${getPatientName(d.patientId)}'s discharge summary.`)}>Edit</Button>
+                          <Button onClick={() => setWorkspace({ kind: 'discharge', summary: d })}>Edit</Button>
                           <Button
                             variant="primary"
-                            onClick={() => setVerified((prev) => [...prev, d.id])}
+                            onClick={() => void updateDischarge(d.id, { status: 'staff-verified' })}
                           >
-                            Complete
+                            Verify
                           </Button>
                         </>
                       )}
@@ -318,17 +342,14 @@ export function StaffDashboard() {
             {
               key: 'status',
               header: 'Status',
-              render: (t) => {
-                const status = taskState[t.id] ?? t.status
-                return <StatusPill tone={statusTone[status]}>{humanize(status)}</StatusPill>
-              },
+              render: (t) => <StatusPill tone={statusTone[t.status]}>{humanize(t.status)}</StatusPill>,
             },
             {
               key: 'action',
               header: 'Action',
               align: 'right',
               render: (t) =>
-                (taskState[t.id] ?? t.status) === 'reverted' ? (
+                t.status === 'reverted' && t.assignedToId === user?.id ? (
                   <Button onClick={() => update(t, 'in-progress')}>Reopen</Button>
                 ) : (
                   <span className="text-sm text-cyan-700">—</span>
@@ -341,21 +362,62 @@ export function StaffDashboard() {
           Medicine deliveries confirm back to the pharmacy dashboard once received at the ward.
         </p>
       </Card>
-      {workspaceOpen ? (
-        <DemoWorkspace title="Record vitals" description="Capture the latest bedside readings for the care team." action="Save vitals" onClose={() => setWorkspaceOpen(false)}>
-          <WorkspaceField label="Patient">
-            <select className="mt-2 h-11 w-full rounded-xl border border-cyan-200 bg-cyan-50/50 px-3 text-sm font-normal text-cyan-900">
-              {patients.map((patient) => <option key={patient.id}>{patient.name}</option>)}
-            </select>
-          </WorkspaceField>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <WorkspaceField label="Blood pressure" />
-            <WorkspaceField label="Heart rate (bpm)" />
-            <WorkspaceField label="Temperature (°F)" />
-            <WorkspaceField label="SpO₂ (%)" />
-          </div>
-        </DemoWorkspace>
-      ) : null}
+      {renderWorkspace()}
     </>
   )
+
+  function renderWorkspace() {
+    if (!workspace) return null
+    const close = () => setWorkspace(null)
+    if (workspace.kind === 'discharge') {
+      const { summary } = workspace
+      return (
+        <Workspace
+          title={`Discharge summary · ${getPatientName(summary.patientId)}`}
+          description="Correct the ward record before verifying it for the doctor's sign-off."
+          action="Save summary"
+          onClose={close}
+          onComplete={(values) => updateDischarge(summary.id, { diagnosis: values.diagnosis })}
+        >
+          <WorkspaceField label="Diagnosis and course" name="diagnosis" defaultValue={summary.diagnosis} />
+          <p className="text-xs text-cyan-700">
+            Admitted {formatDate(summary.admissionDate)} · planned discharge {formatDate(summary.dischargeDate)}
+          </p>
+        </Workspace>
+      )
+    }
+    return (
+      <Workspace
+        title="Record vitals"
+        description="Capture the latest bedside readings. Medora flags abnormal values automatically."
+        action="Save vitals"
+        onClose={close}
+        onComplete={(values) =>
+          recordVitals({
+            patientId: values.patientId,
+            bloodPressure: values.bloodPressure,
+            heartRate: Number(values.heartRate),
+            temperatureF: Number(values.temperatureF),
+            spo2: Number(values.spo2),
+            weightKg: Number(values.weightKg),
+          })
+        }
+      >
+        <WorkspaceField label="Patient">
+          <WorkspaceSelect
+            name="patientId"
+            defaultValue={focusedPatient?.id}
+            options={patients.map((patient) => ({ value: patient.id, label: `${patient.name} · ${patient.mrn}` }))}
+          />
+        </WorkspaceField>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <WorkspaceField label="Blood pressure" name="bloodPressure" placeholder="120/80" />
+          <WorkspaceField label="Heart rate (bpm)" name="heartRate" type="number" min={20} max={250} />
+          <WorkspaceField label="Temperature (°F)" name="temperatureF" type="number" min={85} max={110} step={0.1} />
+          <WorkspaceField label="SpO₂ (%)" name="spo2" type="number" min={50} max={100} />
+          <WorkspaceField label="Weight (kg)" name="weightKg" type="number" min={0.5} max={400} step={0.1} />
+        </div>
+      </Workspace>
+    )
+  }
 }

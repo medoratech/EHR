@@ -1,31 +1,46 @@
 import { Lock, LogIn, Mail } from 'lucide-react'
 import { useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router'
+import { Link, Navigate, useLocation, useNavigate } from 'react-router'
 import { AuthLayout } from '../components/layout/AuthLayout'
-import { dashboardForEmail, demoAccounts } from '../components/layout/roles'
+import { canOpenPortal } from '../components/layout/access'
+import { ApiError } from '../lib/http'
+import { toast } from '../lib/toast'
+import { useAuth } from '../state/useAuth'
 
 const inputClass =
   'h-11 w-full rounded-xl border border-cyan-200 bg-cyan-50/60 pr-4 pl-10 text-sm text-cyan-900 shadow-inner shadow-cyan-900/5 placeholder:text-cyan-500 focus:border-cyan-500 focus:bg-white focus:ring-2 focus:ring-cyan-100'
 
 export function Login() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const { login, info, user } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [remember, setRemember] = useState(false)
   const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  const from = (location.state as { from?: string } | null)?.from
+  const demoAccounts = info?.demoAccounts ?? []
+
+  if (user && !busy) return <Navigate to={user.home} replace />
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const account = demoAccounts.find(
-      (item) => item.email.toLowerCase() === email.trim().toLowerCase(),
-    )
-    if (!account || password !== 'medora') {
-      setError('Use a listed demo account with the password “medora”.')
-      return
-    }
-    sessionStorage.setItem('medora:demo-session', JSON.stringify(account))
+    setBusy(true)
     setError('')
-    navigate(dashboardForEmail(email))
+    try {
+      const signedIn = await login(email, password, remember)
+      const portal = from?.split(/[/?]/)[1] ?? ''
+      navigate(from && canOpenPortal(signedIn.role, portal) ? from : signedIn.home, { replace: true })
+    } catch (caught) {
+      setError(caught instanceof ApiError ? caught.message : 'Sign-in failed. Please try again.')
+      setBusy(false)
+    }
   }
+
+  const notAvailable = (feature: string) =>
+    toast(`${feature} is not configured for this Medora deployment yet.`, 'info')
 
   return (
     <AuthLayout
@@ -87,13 +102,15 @@ export function Login() {
           <label className="flex cursor-pointer items-center gap-2 text-sm text-cyan-800">
             <input
               type="checkbox"
+              checked={remember}
+              onChange={(event) => setRemember(event.target.checked)}
               className="h-4 w-4 cursor-pointer rounded border-cyan-400 accent-cyan-700"
             />
             Keep me signed in
           </label>
           <button
             type="button"
-            onClick={() => window.dispatchEvent(new CustomEvent('medora:demo-action'))}
+            onClick={() => toast('Ask your administrator to send you a new password setup link.', 'info')}
             className="text-sm font-semibold text-cyan-700 hover:text-cyan-900"
           >
             Forgot password?
@@ -102,9 +119,10 @@ export function Login() {
 
         <button
           type="submit"
-          className="inline-flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-700 to-cyan-500 px-4 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:opacity-90"
+          disabled={busy}
+          className="inline-flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-700 to-cyan-500 px-4 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:opacity-90 disabled:cursor-wait disabled:opacity-70"
         >
-          Sign in
+          {busy ? 'Signing in…' : 'Sign in'}
           <LogIn className="h-4 w-4" aria-hidden="true" />
         </button>
       </form>
@@ -123,14 +141,14 @@ export function Login() {
       <div className="mt-4 grid grid-cols-2 gap-2.5">
         <button
           type="button"
-          onClick={() => window.dispatchEvent(new CustomEvent('medora:demo-action'))}
+          onClick={() => notAvailable('Single sign-on')}
           className="inline-flex min-h-11 cursor-pointer items-center justify-center rounded-xl bg-white px-4 text-sm font-semibold text-cyan-700 ring-1 ring-inset ring-cyan-300 transition-colors duration-200 hover:bg-cyan-50"
         >
           Continue with SSO
         </button>
         <button
           type="button"
-          onClick={() => window.dispatchEvent(new CustomEvent('medora:demo-action'))}
+          onClick={() => notAvailable('Passkey sign-in')}
           className="inline-flex min-h-11 cursor-pointer items-center justify-center rounded-xl bg-white px-4 text-sm font-semibold text-cyan-700 ring-1 ring-inset ring-cyan-300 transition-colors duration-200 hover:bg-cyan-50"
         >
           Use a passkey
@@ -147,30 +165,33 @@ export function Login() {
         </Link>
       </p>
 
-      <div className="mt-6 rounded-xl border border-dashed border-cyan-300 bg-cyan-50/60 p-4">
-        <p className="text-xs font-semibold tracking-wide text-cyan-700 uppercase">
-          Demo accounts — click to autofill
-        </p>
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {demoAccounts.map((account) => (
-            <button
-              key={account.email}
-              type="button"
-              onClick={() => {
-                setEmail(account.email)
-                setPassword('medora')
-              }}
-              className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset transition-colors duration-200 ${
-                email === account.email
-                  ? 'bg-cyan-700 text-white ring-cyan-700'
-                  : 'bg-white text-cyan-800 ring-cyan-200 hover:bg-cyan-100'
-              }`}
-            >
-              {account.role}
-            </button>
-          ))}
+      {demoAccounts.length > 0 ? (
+        <div className="mt-6 rounded-xl border border-dashed border-cyan-300 bg-cyan-50/60 p-4">
+          <p className="text-xs font-semibold tracking-wide text-cyan-700 uppercase">
+            Demo accounts — click to autofill
+          </p>
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {demoAccounts.map((account) => (
+              <button
+                key={account.email}
+                type="button"
+                title={`${account.name} · ${account.email}`}
+                onClick={() => {
+                  setEmail(account.email)
+                  setPassword(account.password)
+                }}
+                className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset transition-colors duration-200 ${
+                  email === account.email
+                    ? 'bg-cyan-700 text-white ring-cyan-700'
+                    : 'bg-white text-cyan-800 ring-cyan-200 hover:bg-cyan-100'
+                }`}
+              >
+                {account.role}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      ) : null}
     </AuthLayout>
   )
 }

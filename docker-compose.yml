@@ -1,0 +1,22 @@
+# Local PostgreSQL for the Medora API.  `docker compose up -d db`
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: medora
+      POSTGRES_PASSWORD: medora
+      POSTGRES_DB: medora
+    ports:
+      - '127.0.0.1:5433:5432'
+    volumes:
+      - medora-db:/var/lib/postgresql/data
+      - ./server/docker/init-test-db.sql:/docker-entrypoint-initdb.d/init-test-db.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U medora -d medora']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  medora-db:

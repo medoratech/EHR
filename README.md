@@ -7,306 +7,305 @@ laboratories, pharmacy, reception and administration** through a single interfac
 gets a purpose-built dashboard over the same patient record, so context follows the patient
 across the hospital instead of living in silos.
 
-This repository is a **front-end prototype**: there is no backend and no database. All records
-are synthetic and held **in memory** — reloading the page restores the seed data.
+The repository holds two applications:
+
+| Part | Location | Stack |
+| ---- | -------- | ----- |
+| **Web app** | `src/` | React 19, TypeScript, Vite 8, Tailwind CSS 4, React Router 7 |
+| **API** | `server/` | Node 22, Fastify 5, Prisma 6, PostgreSQL 17, zod, argon2, JWT |
+
+All records are synthetic. Demo deployments seed a deterministic dataset (Ghanaian names,
+`+233` numbers) and can be reset from the UI.
 
 ---
 
 ## Contents
 
-- [Overview](#overview)
-- [Feature highlights](#feature-highlights)
-- [Portals & routes](#portals--routes)
-- [Tech stack](#tech-stack)
 - [Getting started](#getting-started)
-- [Demo accounts](#demo-accounts)
-- [Authentication & session](#authentication--session)
-- [Project structure](#project-structure)
-- [Data layer](#data-layer)
-- [State & demo actions](#state--demo-actions)
-- [Demo clock](#demo-clock)
+- [Architecture](#architecture)
+- [Portals & routes](#portals--routes)
+- [Authentication & access control](#authentication--access-control)
+- [API reference](#api-reference)
+- [Data model](#data-model)
+- [Live updates](#live-updates)
+- [Clinical clock](#clinical-clock)
 - [Design system](#design-system)
 - [Accessibility](#accessibility)
 - [Testing & quality](#testing--quality)
 - [Configuration](#configuration)
+- [Deploying](#deploying)
 - [Known limitations](#known-limitations)
-
----
-
-## Overview
-
-| Field | Value |
-| ----- | ----- |
-| **Product** | Medora EHR — unified hospital information system |
-| **Type** | Front-end prototype (demo / pitch build) |
-| **Data** | Synthetic, in-memory, deterministic |
-| **Backend** | None |
-| **Currency** | See [Known limitations](#known-limitations) |
-| **Locale / context** | Ghanaian names, phone numbers and clinical scenarios (GH₵ intended) |
-
-The experience is split into a small **public surface** (marketing landing, getting started,
-sign in, sign up) and seven **role portals** behind a shared application shell.
-
----
-
-## Feature highlights
-
-- **One connected care experience** — patient context (demographics, risk, allergies, latest
-  vitals) is pinned above every portal view via `PatientContextBar`.
-- **Seven role-based portals** with dedicated navigation, KPIs, tables and charts.
-- **Live, shared demo state** — actions taken in one portal (book a test, release a report,
-  record vitals, take a payment, invite a user…) are reflected everywhere else instantly and
-  appended to an audit trail.
-- **Deterministic demo clock** so dates, "today" volumes and trends never look stale.
-- **Full-page demo workspaces** — modals with validation for creating appointments, lab
-  bookings, vitals, users, etc.
-- **Accessible by default** — skip links, focus-visible rings, 44px touch targets, labelled
-  controls and `prefers-reduced-motion` support.
-- **Responsive** — clinical tables collapse to stacked cards below 768px; the sidebar becomes
-  a focus-trapped mobile drawer.
-- **Branded favicon + PWA manifest** — SVG heart-pulse mark, PNG fallbacks, Apple touch icon
-  and a `site.webmanifest`.
-
----
-
-### What each portal covers
-
-| Portal | What it covers |
-| ------ | -------------- |
-| **Patient** | Symptom triage, appointments, reports, lab booking, prescriptions, notifications, diet plan and glucose trend |
-| **Doctor** | Patient list, AI-assisted problem summaries, report review, task delegation, discharge sign-off |
-| **Staff** | Task queue, vitals capture, discharge summaries, feedback loop |
-| **Laboratory** | Test analytics, work queue, report uploads, patient history, bookable catalogue |
-| **Pharmacy** | Inventory and expiry, prescription fulfilment, orders, refill reminders |
-| **Reception** | Patient flow, appointment approval/check-in, billing and invoices, discharge coordination |
-| **Admin** | User roles & access, data oversight, operational analytics, security audit log |
-
----
-
-## Portals & routes
-
-Public routes:
-
-| Route | Page |
-| ----- | ---- |
-| `/` | Marketing landing page (hero, portal grid, ecosystem) |
-| `/get-started` | Choose: create account or sign in |
-| `/login` | Sign in with a demo account |
-| `/signup` | Multi-field registration with role picker |
-
-Authenticated workspace routes (rendered inside `AppShell`):
-
-| Route | Portal | Accent | Views (sidebar sections) |
-| ----- | ------ | ------ | ------------------------ |
-| `/patient` | Patient portal | `patient` | My health · Appointments · Reports · Medicines |
-| `/doctor` | Clinician portal | `clinical` | Clinical overview · My patients · Reports to review · Task delegation |
-| `/staff` | Staff portal | `operations` | My workspace · Task queue · Vital updates · Discharges |
-| `/laboratory` | Laboratory portal | `diagnostics` | Lab overview · Test queue · Report uploads · Test catalogue |
-| `/pharmacy` | Pharmacy portal | `pharmacy` | Pharmacy overview · Inventory · Prescription queue · Refill reminders |
-| `/reception` | Reception portal | `operations` | Front desk overview · Appointments · Billing · Discharges |
-| `/admin` | Admin portal | `admin` | Admin overview · User access · Data oversight · Audit logs |
-
-Each section is a **query-string view** (`?view=…`) handled by the page's own
-`useSearchParams`. Nav items live in [`src/components/layout/nav.ts`](src/components/layout/nav.ts);
-the header/sidebar render from that config, and a "Portals" switcher moves between workspaces.
-
-> Routes are **not guarded** — for the demo any workspace is reachable directly by URL.
-
----
-
-## Tech stack
-
-| Concern | Choice |
-| ------- | ------ |
-| Build | [Vite 8](https://vite.dev) |
-| UI | React 19 + TypeScript 6 |
-| Styling | Tailwind CSS 4 (CSS-first `@theme`, no config file) |
-| Routing | React Router 7 (`react-router`) |
-| Icons | `lucide-react` |
-| Lint | ESLint 10 (flat config) + typescript-eslint |
-| Tests | Node's built-in `node:test` runner |
-
-Runtime dependencies: `react`, `react-dom`, `react-router`, `lucide-react`,
-`tailwindcss`, `@tailwindcss/vite`.
-No UI component library and no state library — everything is hand-rolled.
 
 ---
 
 ## Getting started
 
-**Requirements:** Node.js 20+ and npm.
+**Requirements:** Node.js 22.9+, npm, Docker (for PostgreSQL).
 
 ```bash
-npm install     # install dependencies
-npm run dev     # start the dev server (http://localhost:5173)
+npm install && npm --prefix server install   # dependencies for both apps
+npm run db:up                                # PostgreSQL 17 on localhost:5433
+cp server/.env.example server/.env           # then set JWT_SECRET (openssl rand -base64 48)
+npm --prefix server run db:deploy            # apply migrations
+npm --prefix server run db:seed              # load the demo dataset
+npm run dev:api                              # API on http://127.0.0.1:4000
+npm run dev                                  # web app on http://localhost:5173 (proxies /api)
 ```
 
-Then open the printed URL, choose a portal, or sign in with a demo account.
+The Compose database listens on **5433** so it does not clash with a local PostgreSQL on 5432.
+The container also creates `medora_test` for the API test suite.
 
-### Scripts
+### Demo accounts
 
-| Script | Purpose |
-| ------ | ------- |
-| `npm run dev` | Start the Vite dev server with HMR |
-| `npm run build` | Type-check (`tsc -b`) then build for production into `dist/` |
-| `npm run preview` | Serve the production build locally |
-| `npm run lint` | Run ESLint over the project |
-| `npm run typecheck` | Run `tsc -b` without emitting |
-| `npm run test` | Run the smoke tests in `tests/` |
-
----
-
-## Demo accounts
-
-Sign in at `/login` with **any** listed email and the password **`medora`**. The login screen
-lists the accounts as click-to-autofill chips.
+With `DEMO_MODE=true` the login page lists these accounts as click-to-fill chips. The password
+for all of them is **`medora`**.
 
 | Role | Name | Email |
 | ---- | ---- | ----- |
 | Doctor | Dr. Adjoa Mensah | `doctor@medora.health` |
 | Staff | Nurse Grace Owusu | `staff@medora.health` |
-| Laboratory | Irene Quaye | `lab@medora.health` |
-| Pharmacy | Kofi Boateng | `pharmacy@medora.health` |
-| Reception | Yaa Asantewaa | `reception@medora.health` |
+| Laboratory | Lab Tech Irene Quaye | `lab@medora.health` |
+| Pharmacy | Pharmacy Tech Leo Amoah | `pharmacy@medora.health` |
+| Reception | Reception Sena Aidoo | `reception@medora.health` |
 | Admin | Nana Adjei | `admin@medora.health` |
-| Patient | Amara Osei | `patient@medora.health` |
+| Patient | Amara Osei (chart `P-1001`) | `patient@medora.health` |
 
-The accounts are defined in [`src/components/layout/roles.ts`](src/components/layout/roles.ts).
+Other seeded staff (for example `k.amankwah@medora.health` or `p.ofori@medora.health`) use the
+same password. `k.bediako@` is suspended and `i.saleh@` is an invite that has not been accepted,
+so neither can sign in.
+
+### Scripts
+
+| Root script | Purpose |
+| ----------- | ------- |
+| `npm run dev` / `build` / `preview` | Web app dev server, production build, preview |
+| `npm run dev:api` | API with reload (`server/`) |
+| `npm run db:up` | Start PostgreSQL in Docker |
+| `npm run lint` / `typecheck` | Web app checks |
+| `npm test` | Web app smoke tests |
+| `npm run test:api` | API integration tests (needs the database) |
+
+| `server/` script | Purpose |
+| ---------------- | ------- |
+| `db:migrate` | Create and apply a migration during development |
+| `db:deploy` | Apply pending migrations (CI / production) |
+| `db:seed` | Replace all records with the demo dataset |
+| `db:reset` | Drop, re-migrate and re-seed |
+| `create-admin` | Create the first administrator on a non-demo database |
+| `build` / `start` | Bundle to `dist/` and run it |
+| `typecheck` / `test` | Strict TypeScript check; Vitest suite |
 
 ---
 
-## Authentication & session
-
-Authentication is **demo-only** — there is no real auth, token or backend.
-
-- Submitting the sign-in form checks the email against `demoAccounts` and requires the literal
-  password `medora`.
-- On success the chosen account is written to `sessionStorage` under `medora:demo-session` and
-  the user is routed to the matching dashboard (`dashboardForEmail`).
-- **Log out** clears that key and returns to the landing page.
-- Registration (`/signup`) validates the form and routes to the selected role's dashboard but
-  does not persist anything.
-- SSO / passkey buttons are placeholders that raise a demo toast.
-
----
-
-## Project structure
+## Architecture
 
 ```
-.
-├─ public/                         Static assets served as-is
-│  ├─ favicon.svg                  Primary SVG mark (teal heart-pulse)
-│  ├─ favicon-16.png / favicon-32.png
-│  ├─ apple-touch-icon.png         180×180 iOS home-screen icon
-│  ├─ icon-192.png / icon-512.png  PWA icons
-│  ├─ icon-maskable-512.png        Maskable PWA icon
-│  └─ site.webmanifest             Web app manifest
-├─ src/
-│  ├─ main.tsx                     Entry: BrowserRouter + <App />
-│  ├─ App.tsx                      Routes, DemoStoreProvider, demo toast
-│  ├─ index.css                    Tailwind v4 @theme tokens + utilities
-│  ├─ components/
-│  │  ├─ layout/
-│  │  │  ├─ AppShell.tsx           Sidebar, header, search, notifications, drawer
-│  │  │  ├─ AuthLayout.tsx         Split-screen auth shell + RoleSelector
-│  │  │  ├─ nav.ts                 Portal + sidebar configuration
-│  │  │  ├─ roles.ts               Role options and demo accounts
-│  │  │  ├─ PatientContextBar.tsx  Shared patient context strip
-│  │  │  └─ ScrollToTop.tsx        Resets scroll on route/view change
-│  │  └─ ui/
-│  │     ├─ primitives.tsx         Card, Button, Badge, StatusPill, MetricTile, …
-│  │     ├─ Chart.tsx              BarChart, PieChart, LineChart (hand-built SVG)
-│  │     ├─ Table.tsx              DataTable with responsive card fallback
-│  │     ├─ DemoWorkspace.tsx      Modal workspace + WorkspaceField
-│  │     ├─ FocusedPortalView.tsx  Generic section view for ?view= pages
-│  │     ├─ Parallax.tsx           Parallax wrapper
-│  │     └─ DoctorIllustration.tsx (unused — see Known limitations)
-│  ├─ data/
-│  │  ├─ types.ts                  Domain model (types & interfaces)
-│  │  ├─ mock.ts                   Synthetic seed records + DEMO_NOW
-│  │  └─ api.ts                    Read helpers / data-access seam
-│  ├─ lib/
-│  │  ├─ format.ts                 Currency, date and label formatters
-│  │  ├─ demoClock.ts              Deterministic "now" helpers
-│  │  ├─ demoActions.ts            Demo toast dispatcher
-│  │  └─ parallax.ts               Scroll-linked parallax engine (rAF)
-│  ├─ pages/                       Landing, GetStarted, Login, SignUp + 7 dashboards
-│  └─ state/
-│     ├─ demoStore.tsx             Provider holding mutable demo records
-│     ├─ demoStoreContext.ts       Context + DemoStoreValue contract
-│     └─ useDemoStore.ts           Consumer hook
-├─ tests/demo-smoke.test.mjs       Smoke tests (structure + wiring)
-├─ index.html                      App shell HTML + icon/manifest links
-├─ vite.config.ts                  Vite + React + Tailwind plugins
-├─ eslint.config.js                Flat ESLint config
-├─ tsconfig.json / tsconfig.app.json / tsconfig.node.json
-└─ package.json
+Browser (React SPA)                         API (Fastify)                    PostgreSQL
+──────────────────                          ─────────────                    ──────────
+AuthProvider ── /api/auth/* ──────────────▶ auth routes ─┐
+  access token in memory                    (argon2, JWT, │
+  refresh token = httpOnly cookie            rotation)    │
+EhrProvider ─── GET /api/<collection> ────▶ resource routes ── Prisma ───▶ tables + CHECKs
+  role-filtered collections                  zod validation   (one tx per   append-only audit
+  actions → POST/PATCH/PUT                   RBAC + scoping    write, with  trigger
+  live feed ◀── GET /api/events (SSE) ◀──── change bus         audit + notifications)
 ```
 
----
-
-## Data layer
-
-Three files under `src/data/` describe and serve the demo data.
-
-- **`types.ts`** — the domain model. Key entities:
-  `Patient`, `Appointment`, `Vitals`, `Task`, `LabTest`, `Prescription`/`Medicine`,
-  `InventoryItem`, `Invoice`, `DischargeSummary`, `User`, `AuditEvent`, `Notification`,
-  `DietPlan`, `ProblemSummary`, `GlucoseReading`, plus shared unions
-  (`Severity`, `Role`, `Department`, status unions).
-- **`mock.ts`** — the synthetic dataset, generated relative to `DEMO_NOW`. Contains the patients,
-  appointments (today + a generated 6-day history), vitals, tasks, lab tests, prescriptions,
-  inventory, invoices, discharge summaries, users, audit events, notifications, problem
-  summaries, diet plan and the bookable test catalogue. `CURRENT_PATIENT_ID = 'P-1001'`
-  (Amara Osei) anchors the "my record" views.
-- **`api.ts`** — the **data-access seam**. Every page imports read helpers from here
-  (`getPatient`, `latestVitals`, `labsFor`, `appointmentsFor`, `dailyVolume`, `countBy`,
-  derived collections such as `unpaidInvoices`, `newLabReports`, `revenueCollected`, …)
-  rather than reaching into `mock.ts` directly.
-
-> Replacing the mock with real HTTP calls is intended to be a **single-file change**
-> (`api.ts`), plus the store's mutation methods.
+- **`src/lib/http.ts`** is the API client. It attaches the bearer token, refreshes once on a
+  401, and turns error responses into `ApiError` with the server's message.
+- **`src/state/auth.tsx`** restores the session on load, syncs the clinical clock and exposes
+  `login`, `logout`, `register` and `setPassword`.
+- **`src/state/ehrStore.tsx`** loads every collection the signed-in role may read. It exposes
+  each write as an action (`bookAppointment`, `releaseLabReport`, `payInvoice` and so on) and
+  refetches when the live feed reports a change. If the API refuses an action, the store shows
+  the reason as a toast and resolves the action to `null`.
+- **`src/data/api.ts`** holds pure helpers (`latestVitals`, `dailyVolume`, `countBy` and so on).
+  Pages never import data directly.
+- **`server/src/routes/*`** has one module per area. Every write runs in one transaction that
+  also records an audit event and notifies the affected users.
 
 ---
 
-## State & demo actions
+## Portals & routes
 
-Records that a user can change at runtime live in a React context, provided by
-[`src/state/demoStore.tsx`](src/state/demoStore.tsx) and consumed via `useDemoStore()`.
-The store deep-clones the seed data on init and exposes mutations that also emit a
-**notification** and **audit event** on every action.
+Public routes: `/` (landing), `/get-started`, `/login`, `/signup`, and `/set-password?token=…`
+(the invite link).
 
-| Action | Effect |
-| ------ | ------ |
-| `addAppointment` / `updateAppointment` | Book or change appointment status |
-| `addLabTest` / `releaseLabReport` | Book a test; release a completed report |
-| `addVitals` | Record a new set of patient readings |
-| `orderMedicine` | Mark a prescribed medicine as ordered |
-| `updateInvoice` | Set invoice status/method (payments) |
-| `updateTask` | Advance a care task |
-| `addUser` / `updateUserStatus` | Invite staff or change access |
-| `resetDemo` | Restore every record to the seed snapshot |
+Workspace routes require sign-in, and each role can only open its own portal (`RequireAuth`).
+Administrators can also open every staff portal, but the API still enforces each role's
+write rights there.
 
-- **Reset demo data** is available in the sidebar footer and the profile menu.
-- **Demo toasts** are raised by dispatching a `medora:demo-action` `CustomEvent` (see
-  `lib/demoActions.ts`); `App.tsx` listens and shows a transient toast. Placeholder buttons use
-  this so the UI feels responsive without a backend.
+| Route | Portal | Who may open it | Views (`?view=`) |
+| ----- | ------ | --------------- | ---------------- |
+| `/patient` | Patient | patient | health · appointments · reports · medicines |
+| `/doctor` | Clinician | doctor, admin | overview · patients · reports · tasks |
+| `/staff` | Staff | staff, admin | workspace · tasks · vitals · discharges |
+| `/laboratory` | Laboratory | lab, admin | overview · queue · reports · catalogue |
+| `/pharmacy` | Pharmacy | pharmacy, admin | overview · inventory · prescriptions · refills |
+| `/reception` | Reception | receptionist, admin | overview · appointments · billing · discharges |
+| `/admin` | Admin | admin | overview · access · oversight · audit |
+
+What each portal can now do against the API:
+
+| Portal | Actions |
+| ------ | ------- |
+| Patient | Run an OLDCARTS symptom check, read health tips chosen for their conditions, request or cancel appointments, book catalogue lab tests, share external reports, order prescribed medicines, pay invoices, read notifications |
+| Doctor | Review symptom checks (urgent and unreviewed first), register patients, delegate and reassign tasks, send completed tasks back, approve or edit problem summaries, mark lab reports reviewed, save clinical notes, manage the health tip library (API) |
+| Staff | Start or complete their own tasks, record vitals (severity is classified on the server), edit and verify discharge summaries |
+| Laboratory | Advance tests through booked → sample-collected → processing, release results |
+| Pharmacy | Dispense medicines, raise stock reorders, send refill reminders, generate invoices |
+| Reception | Register walk-ins straight into today's queue, approve and check out appointments, record payments |
+| Admin | Invite staff (one-time setup link), approve, suspend or reactivate accounts, edit clinic settings and departments, read the audit trail |
 
 ---
 
-## Demo clock
+## Authentication & access control
 
-The whole experience is pinned to a fixed instant so dates, "today" queues and trend charts are
-deterministic and never look stale:
+- **Passwords** are hashed with argon2id. An unknown email takes as long to reject as a wrong
+  password, and both return the same message.
+- **Lockout:** five failed attempts lock the account for 15 minutes. Every failure is audited,
+  and from the third onwards it is flagged critical.
+- **Sessions:** a 15-minute HS256 access token is kept only in memory. The refresh token is
+  opaque, stored as a SHA-256 hash in the database, and sent in an `httpOnly`, `SameSite=Strict`
+  cookie scoped to `/api/auth`. "Keep me signed in" makes the cookie last 30 days; otherwise it
+  is a browser-session cookie with a 12-hour server limit.
+- **Rotation and reuse detection:** every refresh issues a new token. A rotated token still works
+  for 30 seconds, so parallel tabs don't sign each other out. After that, presenting it again
+  revokes every session for that user and records a critical audit event.
+- **Live revocation:** each request re-reads the user, so a suspension or role change applies
+  immediately, and both also revoke refresh tokens.
+- **Registration:** patients who sign up get a new chart (`P-…`, `MRN-…`) and are signed in.
+  Staff sign-ups are created as `invited` and cannot sign in until an admin approves them.
+- **Invites:** when an admin invites someone, the API returns a 72-hour one-time
+  `/set-password` link for the admin to share.
+- **Authorisation:** all of it happens on the server. Patients only ever see their own chart in
+  any collection. Each write checks the caller's role (for example, only lab staff release
+  reports, only a nurse verifies a discharge and only a doctor approves one, and only a doctor
+  reassigns tasks). Status changes follow the transition tables in `server/src/domain.ts`.
 
-```ts
-// src/data/mock.ts
-export const DEMO_NOW = '2026-10-16T09:00:00.000Z'
-```
+---
 
-`src/lib/demoClock.ts` exposes `demoNow()`, `demoNowIso()` and `demoDateKey(offsetDays)` built on
-that constant. New records created through the store are stamped with the demo time, not the
-wall clock.
+## API reference
+
+Every route is under `/api`. Errors look like `{ "error": { "code", "message", "issues?" } }`.
+Everything except `system/*`, `healthz` and `auth/*` needs `Authorization: Bearer <token>`.
+
+| Area | Endpoints |
+| ---- | --------- |
+| System | `GET healthz` · `GET system/info` (demo mode, clock, demo accounts) · `GET system/settings` · `PUT system/settings/:key` |
+| Clinic | `GET clinic` (public: settings and departments) · `PUT clinic` · `POST departments` · `PATCH departments/:name` (`active`, `rename`) — admin only |
+| Auth | `POST auth/login` · `POST auth/refresh` · `POST auth/logout` · `POST auth/register` · `POST auth/set-password` · `GET auth/me` |
+| Patients | `GET/POST patients` · `GET/PATCH patients/:id` · `POST walk-ins` |
+| Clinical | `GET problem-summaries` · `PUT problem-summaries/:patientId` · `POST problem-summaries/:patientId/approve` · `GET/POST clinical-notes` · `GET diet-plans` · `PUT diet-plans/:patientId` · `GET/POST glucose-readings` |
+| Scheduling | `GET/POST appointments` · `PATCH appointments/:id` |
+| Ward | `GET/POST vitals` · `GET/POST tasks` · `PATCH tasks/:id` · `GET/POST discharge-summaries` · `PATCH discharge-summaries/:id` |
+| Laboratory | `GET/POST lab-tests` · `POST lab-tests/uploads` · `PATCH lab-tests/:id` · `POST lab-tests/:id/release` · `POST lab-tests/:id/acknowledge` · `GET/POST lab-catalogue` · `PATCH lab-catalogue/:id` |
+| Pharmacy | `GET/POST prescriptions` · `POST prescriptions/:id/medicines/:medicineId/order` · `…/dispense` · `POST prescriptions/:id/refill-reminder` · `GET/POST inventory` · `PATCH inventory/:id` · `POST inventory/:id/reorder` |
+| Billing | `GET/POST invoices` · `PATCH invoices/:id` |
+| Admin | `GET/POST users` · `PATCH users/:id` · `POST users/:id/setup-link` · `GET audit-events` |
+| Symptom checks | `POST triage-assessments` (OLDCARTS answers) · `GET triage-assessments` · `POST triage-assessments/:id/review` (doctor) |
+| Health tips | `GET health-tips` (for a patient; staff pass `?patientId=`) · `GET health-tips/library` · `POST health-tips` · `PATCH health-tips/:id` (doctor, admin) |
+| Me | `GET notifications` · `POST notifications/:id/read` · `POST notifications/read-all` · `GET events` (SSE) |
+| Demo | `POST demo/reset` (only when `DEMO_MODE=true`) |
+
+---
+
+## Data model
+
+The schema lives in `server/prisma/schema.prisma`, and migrations in `server/prisma/migrations/`.
+The main tables are Patient, User, Appointment, Vitals, Task, LabTest, LabCatalogueItem,
+Prescription and Medicine, InventoryItem, Invoice, DischargeSummary, ProblemSummary,
+ClinicalNote, DietPlan, GlucoseReading, AuditEvent, Notification and SystemSetting. Supporting
+tables are RefreshToken, SetupToken and Counter.
+
+- **IDs are readable and sequential** (`P-1009`, `INV-4477`, `MRN-48209`). They come from the
+  `Counter` table, incremented atomically inside each write's transaction.
+- **Enumerated columns** (roles, statuses, kinds, severities) are checked by zod at the API
+  boundary and by PostgreSQL `CHECK` constraints. Both are built from `server/src/domain.ts`.
+- **Clinic reference data is stored in the database, not in code.** The `Department` table
+  is referenced by patients and appointments through foreign keys, and renames cascade. The
+  single-row `Clinic` table holds the clinic name, currency, locale, time zone, bookable
+  appointment times, accepted payment methods and the label for unassigned bookings. Admins
+  edit both on the Admin overview. Closed departments keep their history but accept no new
+  patients or bookings. Patient self-bookings must use a configured time, and payments must use
+  a configured method.
+- **The audit trail is append-only.** A trigger rejects any `UPDATE` or `DELETE`. The only
+  exception is the foreign key clearing `actorId` when a user is deleted.
+- **Money** is stored as `numeric` and returned as a number. Dates without a time are returned
+  as `YYYY-MM-DD`, and timestamps as ISO-8601.
+- **Seed data** (`server/src/seed/data.ts`) is built relative to the clinical clock, so "today"
+  always has a full queue.
+
+---
+
+## Symptom checks (OLDCARTS triage)
+
+The patient answers a guided history: **O**nset, **L**ocation, **D**uration, **C**haracter,
+**A**ggravating and relieving factors, **R**adiation, **T**iming, **S**everity (0–10), plus other
+symptoms. The API then works in three layers (`server/src/triage/`):
+
+1. **Safety rules (`rules.ts`), always run.** A deterministic red-flag screen covers chest pain
+   with breathlessness or spread, severe breathing difficulty, stroke signs, thunderclap
+   headache, collapse or seizure, heavy bleeding, suicidal thoughts, anaphylaxis, fever with
+   stiff neck, bleeding in pregnancy, very high severity, recent critical vitals, and fever in
+   infants. Patterns match whole words and ignore negated mentions ("no chest pain"). The
+   result is a **floor**: the model can raise the urgency but never lower it.
+2. **LLM assessment: Gemini by default (`gemini.ts`), or Claude (`claude.ts`) with
+   `TRIAGE_PROVIDER=claude`.** One request with a JSON-schema-constrained response, using the
+   same prompt and schema for both providers (`prompt.ts`). It returns urgency (emergency,
+   urgent, soon, routine, self-care), one department from the clinic's open departments, a
+   clinician-facing OLDCARTS summary, things to rule out, red flags, and plain-language advice.
+   The output is validated against a zod schema. Blocked, truncated or refused responses count
+   as failures. The model receives age, sex, conditions, allergies and latest vitals, and
+   **never names, MRNs or phone numbers**. The patient's answers are passed as delimited data,
+   not instructions.
+3. **Fallback.** If the model is disabled, unconfigured, refuses or fails, the check still
+   completes on the safety rules alone, with urgency never below "routine", and is marked
+   "safety rules only".
+
+Emergency and rule-escalated results always show the clinic's emergency number (a clinic
+setting) with a call button. Emergency and urgent checks notify doctors. Patients never see the
+clinician summary or the "rule out" list. Each check is saved, audited, and can be marked
+reviewed by a doctor, which the patient sees live.
+
+Configure it with `TRIAGE_AI` and `TRIAGE_PROVIDER` (`gemini` or `claude`). For Gemini, set
+`GEMINI_API_KEY` (or `GOOGLE_API_KEY`), `GEMINI_MODEL` (default `gemini-flash-latest`) and,
+optionally, `GEMINI_THINKING_LEVEL`. For Claude, set `ANTHROPIC_API_KEY`, `CLAUDE_MODEL` and
+`CLAUDE_EFFORT`. The endpoint is rate-limited to 10 checks per
+minute per client. Tests replace the model with a fake (`setTriageModel`) and never call the
+network.
+
+## Health tips
+
+Tips are a curated library in the `HealthTip` table. Each tip lists condition terms (for
+example `diabetes`, `hypertension`, `copd`) that are matched as whole words against the
+conditions on the patient's record. A patient sees up to five tips, taking matched conditions
+in turn so each of their conditions is covered, then general advice. Each tip shows which
+condition it was chosen for. Doctors and admins manage the library through the API. Tips are
+written content and are not generated by a model.
+
+---
+
+## Live updates
+
+`GET /api/events` is a server-sent event stream. Each `change` event lists the collections that
+changed, never the records themselves, and the browser refetches only those it is allowed to
+read. The client connects with `fetch` so the token goes in a header, and it reconnects with
+backoff. The patient context bar shows **Live sync** or **Reconnecting…**.
+
+The change bus runs inside the API process. Running more than one API instance would need a
+shared bus, for example PostgreSQL `LISTEN/NOTIFY`.
+
+---
+
+## Clinical clock
+
+With `CLOCK_START_AT=2026-10-16T09:00:00Z`, the API clock starts at that instant when the
+process boots and then runs in real time. The browser syncs to it from `/api/system/info`
+(`src/lib/clock.ts`). This keeps seeded queues, greetings and expiry countdowns consistent in
+demos. Remove the variable to use real time. Calendar days ("today") and wall times are
+reckoned in the clinic's configured time zone (`Africa/Accra` in the seed), on both the server
+and the browser.
 
 ---
 
@@ -380,45 +379,78 @@ Built to WCAG-AAA-oriented targets:
 
 ## Testing & quality
 
-- **Smoke tests** — [`tests/demo-smoke.test.mjs`](tests/demo-smoke.test.mjs) asserts that all
-  seven dashboards exist, that each renders focused query views (`useSearchParams` +
-  `FocusedPortalView`), that the shared store is wired into the app
-  (`addAppointment`, `releaseLabReport`, `updateInvoice`), and that the deterministic demo clock
-  is used. Run with `npm run test`.
-- **Type safety** — strict project references; `npm run typecheck` runs `tsc -b`.
-- **Lint** — `npm run lint` (ESLint flat config, `dist` ignored).
-- `npm run build` runs the type-check before bundling, so a green build implies clean types.
+- **API integration tests** (`server/test/`, Vitest, 41 tests) run against the real
+  `medora_test` database, which is reset before every test. They cover sign-in, lockout,
+  refresh rotation and reuse detection, logout, suspension, registration, invites, patient
+  isolation, the role matrix, status transitions, server-side vitals classification, the
+  audit trail (including the database trigger and CHECK constraints) and demo reset.
+  Run `npm run test:api`.
+- **Web app smoke tests** (`tests/demo-smoke.test.mjs`) check the API wiring, that pages no
+  longer read seed data directly, and the clock sync. Run `npm test`.
+- **Strict TypeScript** in both apps (`npm run typecheck`, `npm --prefix server run typecheck`)
+  and ESLint for the web app.
 
 ---
 
 ## Configuration
 
-- **`vite.config.ts`** — registers `@vitejs/plugin-react` and `@tailwindcss/vite`. No aliases or
-  proxies; everything is relative imports.
-- **`index.html`** — holds the app shell, the Google Fonts link, `theme-color` (`#1a9b84`), and
-  the favicon / Apple touch icon / `site.webmanifest` links. Title: `Medora EHR`.
-- **`tsconfig.json`** — project references to `tsconfig.app.json` (browser code, `target: es2023`)
-  and `tsconfig.node.json`.
-- **`eslint.config.js`** — flat config extending `@eslint/js`, `typescript-eslint`,
-  `react-hooks` and `react-refresh`.
-- **`.gitignore`** — ignores `node_modules`, `dist`, editor/OS files.
+API settings come from environment variables, validated at startup by `server/src/config.ts`.
+See `server/.env.example`.
+
+| Variable | Default | Purpose |
+| -------- | ------- | ------- |
+| `DATABASE_URL` | — | PostgreSQL connection string |
+| `JWT_SECRET` | — | At least 32 characters; signs access tokens |
+| `HOST` / `PORT` | `127.0.0.1` / `4000` | Listen address |
+| `ACCESS_TOKEN_TTL` | `15m` | Access token lifetime |
+| `REFRESH_TOKEN_TTL_DAYS` | `30` | Lifetime of "keep me signed in" sessions |
+| `SESSION_TTL_HOURS` | `12` | Lifetime of browser-session sign-ins |
+| `CORS_ORIGIN` | empty | Comma-separated origins, only needed when the SPA is on another origin |
+| `COOKIE_SECURE` | `true` in production | Marks cookies `Secure` |
+| `DEMO_MODE` | `false` | Shows demo accounts and enables `POST /demo/reset` |
+| `CLOCK_START_AT` | unset | Pins the clinical clock's starting instant |
+| `LOG_LEVEL` | `info` | Pino log level. Authorization headers and cookies are redacted. |
+
+The web app reads `VITE_API_URL` (optional) to call an API on another origin. By default it
+calls `/api` on its own origin. Vite proxies `/api` to `:4000` for both `dev` and `preview`.
+
+---
+
+## Deploying
+
+1. Provision PostgreSQL and set `DATABASE_URL`, a strong `JWT_SECRET` and `NODE_ENV=production`.
+2. `npm --prefix server ci && npm --prefix server run db:deploy && npm --prefix server run build`
+3. Create the first administrator:
+   `ADMIN_EMAIL=… ADMIN_NAME=… ADMIN_PASSWORD=… npm --prefix server run create-admin`.
+   The demo seed refuses to run against production unless `DEMO_MODE=true`.
+4. Start the API with `npm --prefix server start`, behind TLS.
+5. Build the SPA (`npm run build`) and serve `dist/` from the same origin, routing `/api` to
+   the API. Otherwise set `VITE_API_URL` and `CORS_ORIGIN`.
 
 ---
 
 ## Known limitations
 
-- **No backend or persistence.** Data resets on reload; "Reset demo data" restores the seed.
-- **No route protection.** Auth is cosmetic — any workspace URL is reachable.
-- **Currency mismatch.** Money is rendered by `formatCurrency()` in
-  [`src/lib/format.ts`](src/lib/format.ts), which currently formats as **Indian Rupees (`₹`,
-  `en-IN`)** even though the rest of the demo (Ghanaian names, `+233` phone numbers) implies
-  **GH₵**. Change the locale and symbol there to `en-GH` / `GH₵` to match the data.
-- **Unused leftovers.** `src/components/ui/DoctorIllustration.tsx` is not imported anywhere, and
-  `public/icons.svg` and `public/Screenshot 2026-10-13 023402.png` are unused template assets —
-  safe to delete.
-- **Some `src/data/api.ts` exports are no longer referenced** (e.g. `recordVolume`,
-  `revenueCollected` variants) after screens were switched to read live store data.
+- **No file storage.** Report "uploads" record the file name and a summary; the file itself is
+  not stored.
+- **No email or SMS.** Invite links are shown to the admin to share, and "Forgot password" asks
+  the user to contact an admin. Notifications are in-app only.
+- **No payment gateway.** Paying an invoice records the method and marks it paid.
+- **Dispensing does not change stock levels.** Pharmacists adjust stock with
+  `PATCH /inventory/:id`.
+- **No doctor-to-patient assignment.** "My patients" lists every chart.
+- **SSO and passkey buttons** are placeholders that explain they are not configured.
+- **Symptom checks are decision support, not diagnosis.** The red-flag rules and the prompt
+  need clinical sign-off and an evaluation set before real patients use them. Check your
+  data-processing terms (for example a BAA or zero data retention) before sending patient
+  context to the model in production.
+- **No UI yet for managing the health tip library**; use the API.
+- **Single API instance** for live updates and the cached clinic settings (see
+  [Live updates](#live-updates)).
+- **Audit:** `npm audit` reports a high-severity `deepmerge-ts` advisory in the Prisma 6 CLI's
+  config loader. It is a development tool that only reads local config. The fix requires
+  Prisma 7.
 
 ---
 
-_Medora EHR — a focused demo of connected care._
+_Medora EHR — connected care, end to end._

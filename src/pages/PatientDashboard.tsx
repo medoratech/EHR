@@ -14,10 +14,8 @@ import {
   HeartPulse,
   IdCard,
   Lightbulb,
-  MessageCircle,
   Phone,
   Pill,
-  Search,
   ShoppingCart,
   Sparkles,
   Stethoscope,
@@ -30,7 +28,7 @@ import {
   Weight,
   type LucideIcon,
 } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useSearchParams } from 'react-router'
 import {
   Avatar,
@@ -44,66 +42,19 @@ import {
 } from '../components/ui/primitives'
 import { LineChart } from '../components/ui/Chart'
 
-import {
-  currentPatient,
-  currentPatientDiet,
-  currentPatientGlucose,
-  latestVitals,
-  patientInitials,
-} from '../data/api'
-import type { Department, Severity } from '../data/types'
-import { formatDay, formatTime } from '../lib/format'
-import { useDemoStore } from '../state/useDemoStore'
+import { latestVitals, patientInitials } from '../data/api'
+import type { Department, DietPlan, Severity } from '../data/types'
+import { clinicHour, dateKey, now, todayKey } from '../lib/clock'
+import { formatCurrency, formatDateTime, formatDay, formatLongDate, formatTime } from '../lib/format'
+import { useEhr } from '../state/useEhr'
 import { FocusedPortalView } from '../components/ui/FocusedPortalView'
-import { demoDateKey, demoNow } from '../lib/demoClock'
+import { SymptomCheck } from '../components/ui/SymptomCheck'
+import { URGENCY_LABELS } from '../data/labels'
 
 const vitalsLabels: Record<Severity, string> = {
   normal: 'Within range',
   abnormal: 'Borderline',
   critical: 'Needs attention',
-}
-
-const triageRules: { keywords: string[]; department: Department; note: string }[] = [
-  {
-    keywords: ['chest', 'heart', 'palpitation', 'blood pressure', 'hypertension'],
-    department: 'Cardiology',
-    note: 'Symptoms match a cardiovascular presentation. Book with a cardiologist.',
-  },
-  {
-    keywords: ['fever', 'cough', 'breathless', 'wheeze', 'cold', 'asthma'],
-    department: 'Pulmonology',
-    note: 'Respiratory pattern detected. Consider a chest assessment within 24 hours.',
-  },
-  {
-    keywords: ['rash', 'itch', 'skin', 'eczema', 'acne'],
-    department: 'Dermatology',
-    note: 'Skin presentation. Dermatology consult recommended, photo review advised.',
-  },
-  {
-    keywords: ['headache', 'migraine', 'dizzy', 'seizure', 'numbness'],
-    department: 'Neurology',
-    note: 'Neurological features present. Avoid driving if episodes occur.',
-  },
-  {
-    keywords: ['glucose', 'sugar', 'thirst', 'weight', 'thyroid', 'hormone'],
-    department: 'Endocrinology',
-    note: 'Metabolic symptoms detected. Fasting labs will be requested.',
-  },
-  {
-    keywords: ['knee', 'back', 'joint', 'fracture', 'bone', 'spine'],
-    department: 'Orthopaedics',
-    note: 'Musculoskeletal complaint. Imaging may be required before review.',
-  },
-  {
-    keywords: ['child', 'baby', 'toddler', 'infant'],
-    department: 'Paediatrics',
-    note: 'Paediatric presentation. Dosing is weight-based.',
-  },
-]
-
-function analyseSymptoms(input: string) {
-  const text = input.toLowerCase()
-  return triageRules.filter((r) => r.keywords.some((k) => text.includes(k)))
 }
 
 function greetingFor(hour: number): string {
@@ -113,15 +64,11 @@ function greetingFor(hour: number): string {
 }
 
 function dayLabel(value: string): string {
-  const today = demoNow()
-  today.setHours(0, 0, 0, 0)
-  const target = new Date(value)
-  target.setHours(0, 0, 0, 0)
-  const diff = Math.round((target.getTime() - today.getTime()) / 86_400_000)
-  if (diff === 0) return 'Today'
-  if (diff === 1) return 'Tomorrow'
+  if (value === todayKey()) return 'Today'
+  if (value === dateKey(1)) return 'Tomorrow'
   return formatDay(value)
 }
+
 
 const quickActions: { icon: LucideIcon; label: string }[] = [
   { icon: CalendarPlus, label: 'Book appointment' },
@@ -134,134 +81,110 @@ const quickActions: { icon: LucideIcon; label: string }[] = [
   { icon: Stethoscope, label: 'Check symptoms' },
 ]
 
-function tomorrowKey() {
-  return demoDateKey(1)
-}
-
-const healthTips = [
-  {
-    category: 'Diabetes care',
-    title: 'Pair carbs with protein',
-    body: 'Adding protein or healthy fat to a meal slows glucose absorption. Try groundnuts with your oatmeal or grilled fish with your rice to keep readings steadier.',
-  },
-  {
-    category: 'Hydration',
-    title: 'Drink a glass of water before meals',
-    body: 'Staying hydrated helps your kidneys flush excess sugar and can reduce hunger spikes between meals.',
-  },
-  {
-    category: 'Activity',
-    title: 'Walk for 10 minutes after eating',
-    body: 'A short walk after meals lowers post-meal glucose peaks without strenuous exercise.',
-  },
-  {
-    category: 'Sleep',
-    title: 'Protect 7 to 8 hours of sleep',
-    body: 'Poor sleep raises insulin resistance. Keep a consistent bedtime to steady your morning readings.',
-  },
-  {
-    category: 'Monitoring',
-    title: 'Log your readings consistently',
-    body: 'Recording your fasting glucose at the same time each day helps your care team spot trends early.',
-  },
-]
-
 export function PatientDashboard() {
   const [searchParams] = useSearchParams()
   const {
+    focusedPatient: currentPatient,
+    status,
     appointments,
     invoices,
     labTests,
+    labCatalogue,
+    vitals: allVitals,
+    dietPlans,
+    glucoseReadings,
     notifications: liveNotifications,
     prescriptions,
-    addAppointment,
-    addLabTest,
+    bookAppointment,
+    setAppointmentStatus,
+    bookLabTest,
+    uploadReport,
     orderMedicine,
-    updateInvoice,
-  } = useDemoStore()
-  const [symptoms, setSymptoms] = useState('')
-  const [analysed, setAnalysed] = useState(false)
-  const [cancelledAppointments, setCancelledAppointments] = useState<string[]>([])
+    payInvoice,
+    clinic,
+    activeDepartments,
+    healthTips,
+    triageAssessments,
+    submitSymptomCheck,
+  } = useEhr()
+  const [symptomCheckOpen, setSymptomCheckOpen] = useState(false)
   const [unreadOnly, setUnreadOnly] = useState(false)
   const [activeAction, setActiveAction] = useState<string | null>(null)
-  const [actionValue, setActionValue] = useState('')
   const [actionComplete, setActionComplete] = useState(false)
+  const [preferredDepartment, setPreferredDepartment] = useState<Department | null>(null)
 
-  function openAction(action: string) {
+  function openAction(action: string, department?: Department) {
+    if (action === 'Check symptoms') {
+      setSymptomCheckOpen(true)
+      return
+    }
+    setPreferredDepartment(department ?? null)
     setActiveAction(action)
-    setActionValue('')
     setActionComplete(false)
   }
 
-  const vitals = latestVitals(currentPatient.id)
-  const matches = analysed ? analyseSymptoms(symptoms) : []
+  if (!currentPatient) {
+    return (
+      <p className="rounded-2xl border border-cyan-100 bg-white px-5 py-6 text-sm text-cyan-700" role="status">
+        {status === 'loading' ? 'Loading your record…' : 'Your patient record could not be found.'}
+      </p>
+    )
+  }
+
+  const patientId = currentPatient.id
+  const vitals = latestVitals(allVitals, patientId)
+  const diet: DietPlan | undefined = dietPlans.find((plan) => plan.patientId === patientId)
+  const glucose = glucoseReadings.filter((reading) => reading.patientId === patientId)
+  const lastCheck = triageAssessments.find((check) => check.patientId === patientId)
   const visibleNotifications = unreadOnly
     ? liveNotifications.filter((n) => !n.read)
     : liveNotifications
 
-  const currentPatientAppointments = appointments.filter((a) => a.patientId === currentPatient.id)
-  const currentPatientLabs = labTests.filter((l) => l.patientId === currentPatient.id)
-  const currentPatientPrescriptions = prescriptions.filter((p) => p.patientId === currentPatient.id)
+  const currentPatientAppointments = appointments.filter((a) => a.patientId === patientId)
+  const currentPatientLabs = labTests.filter((l) => l.patientId === patientId)
+  const currentPatientPrescriptions = prescriptions.filter((p) => p.patientId === patientId)
   const upcoming = currentPatientAppointments
     .filter((a) => a.status === 'confirmed' || a.status === 'pending')
     .sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`))
   const completed = currentPatientAppointments.filter((a) => a.status === 'completed')
 
   const patientMedicines = currentPatientPrescriptions.flatMap((p) => p.medicines)
-  const orderableMedicines = patientMedicines.filter((m) => !m.ordered).length
+  const orderable = currentPatientPrescriptions.flatMap((p) =>
+    p.medicines.filter((m) => !m.ordered).map((m) => ({ prescriptionId: p.id, medicine: m })),
+  )
+  const orderableMedicines = orderable.length
+  const outstandingInvoices = invoices.filter((i) => i.patientId === patientId && i.status !== 'paid')
+  const latestHbA1c = currentPatientLabs.find((l) => l.testName === 'HbA1c' && l.result)
+  const hba1cValue = latestHbA1c ? Number.parseFloat(latestHbA1c.result ?? '') : Number.NaN
 
-  function completeAction(action: string) {
+  async function completeAction(action: string, values: Record<string, string> = {}): Promise<boolean> {
+    let saved: unknown = true
     if (action === 'Book appointment') {
-      addAppointment({
-        patientId: currentPatient.id,
-        doctor: 'Dr. Adjoa Mensah',
-        department: 'Endocrinology',
-        date: tomorrowKey(),
-        time: '10:30',
-        type: 'Follow-up',
-        status: 'pending',
-        source: 'app',
-        reason: 'New patient-requested appointment',
+      const department = (values.department as Department) || currentPatient!.department
+      const previous = currentPatientAppointments.find((a) => a.department === department && a.doctorId)
+      saved = await bookAppointment({
+        department,
+        doctor: previous?.doctor,
+        doctorId: previous?.doctorId ?? undefined,
+        date: values.date || dateKey(1),
+        time: values.time,
+        type: previous ? 'Follow-up' : 'OPD',
+        reason: values.reason || `Patient-requested ${department} appointment`,
       })
+    } else if (action === 'Book lab test') {
+      const item = labCatalogue.find((test) => test.id === values.test) ?? labCatalogue[0]
+      saved = item ? await bookLabTest({ catalogueItemId: item.id }) : null
+    } else if (action === 'Upload report') {
+      saved = await uploadReport({ fileName: values.file || 'Uploaded report', note: values.note || undefined })
+    } else if (action === 'Order medicine') {
+      const [prescriptionId, medicineId] = (values.medicine || '').split(':')
+      saved = prescriptionId && medicineId ? await orderMedicine(prescriptionId, medicineId) : null
+    } else if (action === 'Pay bill') {
+      saved = values.invoice && values.method ? await payInvoice(values.invoice, 'paid', values.method) : null
     }
-    if (action === 'Book lab test') {
-      addLabTest({
-        patientId: currentPatient.id,
-        testName: 'HbA1c follow-up',
-        category: 'Diabetes care',
-        price: 320,
-        status: 'booked',
-        result: null,
-        orderedAt: demoNow().toISOString(),
-        reportUploaded: false,
-        isNew: false,
-      })
-    }
-    if (action === 'Upload report') {
-      addLabTest({
-        patientId: currentPatient.id,
-        testName: 'Patient uploaded report',
-        category: 'External document',
-        price: 0,
-        status: 'completed',
-        result: 'Uploaded for care-team review',
-        orderedAt: demoNow().toISOString(),
-        reportUploaded: true,
-        isNew: true,
-      })
-    }
-    if (action === 'Order medicine') {
-      const prescription = currentPatientPrescriptions.find((item) =>
-        item.medicines.some((medicine) => !medicine.ordered),
-      )
-      const medicine = prescription?.medicines.find((item) => !item.ordered)
-      if (prescription && medicine) orderMedicine(prescription.id, medicine.id)
-    }
-    if (action === 'Pay bill') {
-      const invoice = invoices.find((item) => item.patientId === currentPatient.id && item.status !== 'paid')
-      if (invoice) updateInvoice(invoice.id, 'paid', 'Demo card')
-    }
+    if (saved === null) return false
     setActionComplete(true)
+    return true
   }
 
   const vitalRows: { icon: LucideIcon; label: string; value: string }[] = [
@@ -322,7 +245,20 @@ export function PatientDashboard() {
     }[requestedView as 'appointments' | 'reports' | 'medicines']
 
     if (viewContent) {
-      return <FocusedPortalView {...viewContent} onAction={() => completeAction(viewContent.actionLabel)} />
+      return (
+        <>
+          <FocusedPortalView {...viewContent} onAction={() => openAction(viewContent.actionLabel)} />
+          {activeAction ? (
+            <ActionModal
+              action={activeAction}
+              complete={actionComplete}
+              options={modalOptions()}
+              onClose={() => setActiveAction(null)}
+              onComplete={(values) => completeAction(activeAction, values)}
+            />
+          ) : null}
+        </>
+      )
     }
   }
 
@@ -338,14 +274,10 @@ export function PatientDashboard() {
           <div className="relative flex items-center justify-between gap-6 px-6 py-7 sm:px-8 sm:py-8">
             <div className="min-w-0">
               <p className="tabular text-sm font-medium text-cyan-200">
-                {demoNow().toLocaleDateString('en-GB', {
-                  weekday: 'long',
-                  day: 'numeric',
-                  month: 'long',
-                })}
+                {formatLongDate(now())}
               </p>
               <h1 className="mt-1 text-2xl font-bold tracking-tight text-white sm:text-3xl">
-                {greetingFor(demoNow().getHours())}, {currentPatient.name.split(' ')[0]}
+                {greetingFor(clinicHour(now()))}, {currentPatient.name.split(' ')[0]}
               </h1>
               <p className="mt-2 max-w-xl text-sm text-cyan-100 sm:text-base">
                 Here is your health at a glance — appointments, reports, medicines and your care
@@ -413,7 +345,6 @@ export function PatientDashboard() {
               ) : (
                 <ul className="divide-y divide-cyan-100">
                   {upcoming.slice(0, 3).map((a) => {
-                    const isCancelled = cancelledAppointments.includes(a.id)
                     return (
                       <li
                         key={a.id}
@@ -435,24 +366,14 @@ export function PatientDashboard() {
                           </div>
                         </div>
                         <div className="flex shrink-0 flex-col items-end gap-2">
-                          {isCancelled ? (
-                            <StatusPill severity="critical">Cancelled</StatusPill>
-                          ) : (
-                            <Badge>{a.status}</Badge>
-                          )}
-                          {isCancelled ? null : (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setCancelledAppointments((prev) =>
-                                  prev.includes(a.id) ? prev : [...prev, a.id],
-                                )
-                              }
-                              className="cursor-pointer text-xs font-semibold text-red-600 hover:underline"
-                            >
-                              Cancel
-                            </button>
-                          )}
+                          <Badge>{a.status}</Badge>
+                          <button
+                            type="button"
+                            onClick={() => void setAppointmentStatus(a.id, 'cancelled')}
+                            className="cursor-pointer text-xs font-semibold text-red-600 hover:underline"
+                          >
+                            Cancel
+                          </button>
                         </div>
                       </li>
                     )
@@ -522,56 +443,27 @@ export function PatientDashboard() {
               </div>
 
               <div className="mt-5 border-t border-cyan-100 pt-4">
-                <label htmlFor="symptoms" className="text-sm font-semibold text-cyan-900">
-                  Symptom check
-                </label>
-                <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-                  <div className="relative flex-1">
-                    <Search
-                      className="pointer-events-none absolute top-1/2 left-3 h-5 w-5 -translate-y-1/2 text-cyan-500"
-                      aria-hidden="true"
-                    />
-                    <input
-                      id="symptoms"
-                      type="text"
-                      value={symptoms}
-                      onChange={(e) => setSymptoms(e.target.value)}
-                      placeholder="e.g. chest tightness since morning"
-                      className="h-11 w-full rounded-xl border border-cyan-300 pr-3 pl-10 text-sm text-cyan-900 placeholder:text-cyan-600"
-                    />
-                  </div>
-                  <Button variant="primary" onClick={() => setAnalysed(true)}>
-                    <Sparkles className="h-4 w-4" aria-hidden="true" />
-                    Analyse
-                  </Button>
-                </div>
-
-                {analysed ? (
-                  <div
-                    className="mt-4 rounded-xl border border-cyan-200 bg-cyan-50/70 p-4"
-                    aria-live="polite"
-                  >
-                    {matches.length === 0 ? (
-                      <p className="text-sm text-cyan-800">
-                        No specific pattern matched. A general medicine consultation is the safest
-                        starting point.
-                      </p>
-                    ) : (
-                      <ul className="space-y-2">
-                        {matches.map((m) => (
-                          <li
-                            key={m.department}
-                            className="flex items-start justify-between gap-3 rounded-xl bg-white p-3 ring-1 ring-cyan-200"
-                          >
-                            <div>
-                              <p className="font-semibold text-cyan-950">{m.department}</p>
-                              <p className="text-sm text-cyan-700">{m.note}</p>
-                            </div>
-                            <Button className="shrink-0" onClick={() => openAction('Book appointment')}>Book</Button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+                <p className="text-sm font-semibold text-cyan-900">Symptom check</p>
+                <p className="mt-1 text-xs text-cyan-700">
+                  Answer a few questions about what you are feeling and get advice on how soon to be seen.
+                </p>
+                <Button variant="primary" className="mt-3" onClick={() => setSymptomCheckOpen(true)}>
+                  <Sparkles className="h-4 w-4" aria-hidden="true" />
+                  Start symptom check
+                </Button>
+                {lastCheck ? (
+                  <div className="mt-4 rounded-xl border border-cyan-200 bg-cyan-50/70 p-3" aria-live="polite">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs text-cyan-600">Last check · {formatDateTime(lastCheck.createdAt)}</p>
+                      <StatusPill tone={URGENCY_LABELS[lastCheck.urgency].tone}>
+                        {URGENCY_LABELS[lastCheck.urgency].label}
+                      </StatusPill>
+                    </div>
+                    <p className="mt-1 text-sm font-semibold text-cyan-950">{lastCheck.answers.chiefComplaint}</p>
+                    <p className="mt-1 text-xs text-cyan-700">{lastCheck.patientAdvice}</p>
+                    {lastCheck.reviewedBy ? (
+                      <p className="mt-1 text-xs font-medium text-emerald-700">Reviewed by {lastCheck.reviewedBy}</p>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -583,7 +475,7 @@ export function PatientDashboard() {
           <Card className="flex h-full flex-col">
             <CardHeader
               title="Health summary"
-              description={currentPatientDiet.goal}
+              description={diet?.goal ?? 'Your care plan at a glance'}
               icon={<Activity className="h-5 w-5" aria-hidden="true" />}
             />
             <div className="p-5">
@@ -611,28 +503,34 @@ export function PatientDashboard() {
                 ))}
               </div>
 
-              <div className="mt-5">
-                <ProgressBar
-                  value={7.4}
-                  max={10}
-                  label="HbA1c against the 10% ceiling"
-                  severity="abnormal"
-                />
-              </div>
+              {Number.isFinite(hba1cValue) ? (
+                <div className="mt-5">
+                  <ProgressBar
+                    value={hba1cValue}
+                    max={10}
+                    label={`HbA1c ${hba1cValue}% against the 10% ceiling`}
+                    severity={hba1cValue >= 6.5 ? 'abnormal' : 'normal'}
+                  />
+                </div>
+              ) : null}
             </div>
 
-            <div className="border-t border-cyan-100 px-5 pt-4">
-              <p className="text-sm font-semibold text-cyan-900">Fasting glucose trend</p>
-              <p className="text-xs text-cyan-700">Across your last three visits</p>
-            </div>
-            <LineChart
-              title="Fasting glucose in mg/dL over the last three visits"
-              unit=" mg/dL"
-              data={currentPatientGlucose.map((reading, index) => ({
-                label: `Visit ${index + 1}`,
-                value: reading.value,
-              }))}
-            />
+            {glucose.length > 0 ? (
+              <>
+                <div className="border-t border-cyan-100 px-5 pt-4">
+                  <p className="text-sm font-semibold text-cyan-900">Fasting glucose trend</p>
+                  <p className="text-xs text-cyan-700">Across your last {glucose.length} readings</p>
+                </div>
+                <LineChart
+                  title={`Fasting glucose in mg/dL over the last ${glucose.length} readings`}
+                  unit=" mg/dL"
+                  data={glucose.map((reading) => ({
+                    label: formatDay(reading.date),
+                    value: reading.value,
+                  }))}
+                />
+              </>
+            ) : null}
           </Card>
 
           <Card className="flex h-full flex-col">
@@ -831,7 +729,7 @@ export function PatientDashboard() {
                     <p className="text-sm font-semibold text-cyan-950">{n.title}</p>
                     <p className="text-xs text-cyan-700">{n.body}</p>
                     <p className="tabular mt-1 text-[11px] text-cyan-600">
-                      {new Date(n.at).toLocaleString()}
+                      {formatDateTime(n.at)}
                     </p>
                   </div>
                   {n.read ? null : (
@@ -846,77 +744,141 @@ export function PatientDashboard() {
           )}
         </Card>
 
-        <Card className="flex flex-1 flex-col bg-gradient-to-br from-emerald-50 to-white">
-          <CardHeader
-            title="Health tip"
-            icon={<Lightbulb className="h-5 w-5" aria-hidden="true" />}
-            action={
-              <span className="inline-flex items-center rounded-md bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
-                {healthTips[0].category}
-              </span>
-            }
-          />
-          <div className="flex flex-1 flex-col gap-4 p-5">
-            <div className="rounded-xl bg-white p-4 ring-1 ring-emerald-100">
-              <p className="font-semibold text-cyan-950">{healthTips[0].title}</p>
-              <p className="mt-1 text-sm text-cyan-700">{healthTips[0].body}</p>
-              <Button className="mt-4" onClick={() => openAction('Ask the care bot')}>
-                <MessageCircle className="h-4 w-4" aria-hidden="true" />
-                Ask the care bot
-              </Button>
+        {healthTips.length ? (
+          <Card className="flex flex-1 flex-col bg-gradient-to-br from-emerald-50 to-white">
+            <CardHeader
+              title="Health tips for you"
+              description={
+                healthTips.some((tip) => tip.matchedCondition)
+                  ? 'Chosen for the conditions on your record'
+                  : 'General advice for staying well'
+              }
+              icon={<Lightbulb className="h-5 w-5" aria-hidden="true" />}
+              action={
+                <span className="inline-flex items-center rounded-md bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
+                  {healthTips[0].category}
+                </span>
+              }
+            />
+            <div className="flex flex-1 flex-col gap-4 p-5">
+              <div className="rounded-xl bg-white p-4 ring-1 ring-emerald-100">
+                <p className="font-semibold text-cyan-950">{healthTips[0].title}</p>
+                <p className="mt-1 text-sm text-cyan-700">{healthTips[0].body}</p>
+                {healthTips[0].matchedCondition ? (
+                  <p className="mt-2 text-xs font-medium text-emerald-700">For your {healthTips[0].matchedCondition}</p>
+                ) : null}
+              </div>
+              <ul className="mt-auto space-y-1.5">
+                {healthTips.slice(1).map((tip) => (
+                  <li key={tip.id} className="flex items-start gap-2.5 rounded-lg px-1 py-1.5">
+                    <Lightbulb className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-cyan-900">{tip.title}</p>
+                      <p className="text-xs text-cyan-700">{tip.body}</p>
+                      {tip.matchedCondition ? (
+                        <p className="mt-0.5 text-[11px] font-medium text-emerald-700">For your {tip.matchedCondition}</p>
+                      ) : null}
+                    </div>
+                  </li>
+                ))}
+              </ul>
             </div>
-            <ul className="mt-auto space-y-1.5">
-              {healthTips.slice(1).map((tip) => (
-                <li key={tip.title} className="flex items-start gap-2.5 rounded-lg px-1 py-1.5">
-                  <Lightbulb className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" aria-hidden="true" />
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-cyan-900">{tip.title}</p>
-                    <p className="text-xs text-cyan-700">{tip.body}</p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </Card>
+          </Card>
+        ) : null}
       </aside>
     </div>
     {activeAction ? (
       <ActionModal
         action={activeAction}
-        value={actionValue}
         complete={actionComplete}
-        onChange={setActionValue}
+        options={modalOptions()}
         onClose={() => setActiveAction(null)}
-        onComplete={() => completeAction(activeAction)}
+        onComplete={(values) => completeAction(activeAction, values)}
+      />
+    ) : null}
+    {symptomCheckOpen ? (
+      <SymptomCheck
+        emergencyNumber={clinic?.emergencyNumber ?? ''}
+        onSubmit={(answers) => submitSymptomCheck(answers)}
+        onBook={(department) => {
+          setSymptomCheckOpen(false)
+          openAction('Book appointment', department)
+        }}
+        onClose={() => setSymptomCheckOpen(false)}
       />
     ) : null}
     </>
   )
+
+  function modalOptions(): ModalOptions {
+    return {
+      departments: activeDepartments,
+      defaultDepartment: preferredDepartment ?? currentPatient!.department,
+      appointmentSlots: clinic?.appointmentSlots ?? [],
+      paymentMethods: clinic?.paymentMethods ?? [],
+      tests: labCatalogue
+        .filter((test) => test.active)
+        .map((test) => ({ value: test.id, label: `${test.name} · ${formatCurrency(test.price)}` })),
+      medicines: orderable.map(({ prescriptionId, medicine }) => ({
+        value: `${prescriptionId}:${medicine.id}`,
+        label: `${medicine.name} ${medicine.dosage}`,
+      })),
+      invoices: outstandingInvoices.map((invoice) => ({
+        value: invoice.id,
+        label: `${invoice.description ?? invoice.id} · ${formatCurrency(invoice.amount)}`,
+      })),
+      diet,
+      records: [
+        currentPatientLabs[0] ? `${currentPatientLabs[0].testName}: ${currentPatientLabs[0].result ?? 'in progress'}` : null,
+        currentPatientPrescriptions[0]
+          ? `Prescription from ${currentPatientPrescriptions[0].doctor}: ${currentPatientPrescriptions[0].medicines.map((m) => m.name).join(', ')}`
+          : null,
+        completed[0] ? `Visit with ${completed[0].doctor} on ${formatDay(completed[0].date)}` : null,
+      ].filter((record): record is string => Boolean(record)),
+    }
+  }
 }
+
+interface ModalOptions {
+  departments: Department[]
+  defaultDepartment: Department
+  appointmentSlots: string[]
+  paymentMethods: string[]
+  tests: { value: string; label: string }[]
+  medicines: { value: string; label: string }[]
+  invoices: { value: string; label: string }[]
+  diet: DietPlan | undefined
+  records: string[]
+}
+
+const selectClass =
+  'mt-2 h-11 w-full rounded-xl border border-cyan-200 bg-cyan-50/50 px-3 text-sm font-normal text-cyan-900'
 
 function ActionModal({
   action,
-  value,
   complete,
-  onChange,
+  options,
   onClose,
   onComplete,
 }: {
   action: string
-  value: string
   complete: boolean
-  onChange: (value: string) => void
+  options: ModalOptions
   onClose: () => void
-  onComplete: () => void
+  onComplete: (values: Record<string, string>) => Promise<boolean>
 }) {
+  const [busy, setBusy] = useState(false)
   const isUpload = action === 'Upload report'
-  const isBot = action === 'Ask the care bot'
   const isRecords = action === 'View records'
   const isDiet = action === 'Diet plan'
   const isAppointment = action === 'Book appointment'
   const isLab = action === 'Book lab test'
   const isMedicine = action === 'Order medicine'
   const isBill = action === 'Pay bill'
+  const nothingToDo =
+    (isMedicine && options.medicines.length === 0) ||
+    (isBill && options.invoices.length === 0) ||
+    (isLab && options.tests.length === 0)
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -925,6 +887,20 @@ function ActionModal({
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [onClose])
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const values: Record<string, string> = {}
+    new FormData(event.currentTarget).forEach((value, key) => {
+      values[key] = typeof value === 'string' ? value.trim() : value.name
+    })
+    setBusy(true)
+    try {
+      await onComplete(values)
+    } finally {
+      setBusy(false)
+    }
+  }
 
   return (
     <div
@@ -942,86 +918,146 @@ function ActionModal({
           <div>
             <p className="text-[10px] font-bold tracking-[0.18em] text-cyan-500 uppercase">Patient workspace</p>
             <h2 id="action-title" className="mt-1 text-xl font-bold text-cyan-950">{complete ? 'Request saved' : action}</h2>
-            <p className="mt-1 text-sm text-cyan-700">Your request is saved and shared with the care team.</p>
+            <p className="mt-1 text-sm text-cyan-700">
+              {isRecords || isDiet ? 'From your Medora record.' : 'Your request is saved and shared with the care team.'}
+            </p>
           </div>
           <button type="button" onClick={onClose} className="rounded-lg px-2 py-1 text-sm font-semibold text-cyan-600 hover:bg-cyan-50">Close</button>
         </div>
         <div className="p-5">
           {complete ? (
-            <div className="rounded-2xl bg-emerald-50 p-6 text-center text-emerald-800">
+            <div className="rounded-2xl bg-emerald-50 p-6 text-center text-emerald-800" role="status">
               <CheckCircle2 className="mx-auto h-8 w-8" aria-hidden="true" />
               <p className="mt-2 font-semibold">Request completed</p>
               <p className="mt-1 text-sm">Your update is now visible to the care team.</p>
             </div>
           ) : isRecords ? (
             <div className="space-y-2">
-              {['Latest lab report', 'Active prescription', 'Consultation summary'].map((record) => (
-                <div key={record} className="flex items-center justify-between rounded-xl border border-cyan-100 bg-cyan-50/50 px-4 py-3">
-                  <span className="text-sm font-semibold text-cyan-900">{record}</span>
-                  <span className="text-xs text-cyan-600">Available</span>
-                </div>
-              ))}
+              {options.records.length === 0 ? (
+                <p className="text-sm text-cyan-700">No records yet.</p>
+              ) : (
+                options.records.map((record) => (
+                  <div key={record} className="rounded-xl border border-cyan-100 bg-cyan-50/50 px-4 py-3 text-sm font-semibold text-cyan-900">
+                    {record}
+                  </div>
+                ))
+              )}
             </div>
           ) : isDiet ? (
-            <div className="space-y-3">
-              <div className="rounded-2xl bg-emerald-50 p-4">
-                <p className="font-semibold text-emerald-900">{currentPatientDiet.goal}</p>
-                <p className="mt-1 text-sm text-emerald-700">{currentPatientDiet.dailyCalories} kcal daily target</p>
-              </div>
-              {currentPatientDiet.entries.map((entry) => (
-                <div key={entry.meal} className="flex items-center justify-between rounded-xl border border-cyan-100 px-4 py-3">
-                  <span className="font-semibold text-cyan-900">{entry.meal}</span>
-                  <span className="max-w-[65%] text-right text-sm text-cyan-700">{entry.items}</span>
+            options.diet ? (
+              <div className="space-y-3">
+                <div className="rounded-2xl bg-emerald-50 p-4">
+                  <p className="font-semibold text-emerald-900">{options.diet.goal}</p>
+                  <p className="mt-1 text-sm text-emerald-700">{options.diet.dailyCalories} kcal daily target</p>
                 </div>
-              ))}
-            </div>
-          ) : isAppointment || isLab || isMedicine || isBill ? (
-            <div className="space-y-4">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="text-sm font-semibold text-cyan-900">
-                  {isAppointment ? 'Department' : isLab ? 'Test' : isMedicine ? 'Medicine' : 'Invoice'}
-                  <select className="mt-2 h-11 w-full rounded-xl border border-cyan-200 bg-cyan-50/50 px-3 text-sm font-normal text-cyan-900">
-                    <option>
-                      {isAppointment
-                        ? 'Endocrinology'
-                        : isLab
-                          ? 'HbA1c follow-up · ₹320'
-                          : isMedicine
-                            ? 'Metformin 500mg'
-                            : 'Outstanding consultation · ₹120'}
-                    </option>
-                  </select>
-                </label>
-                <label className="text-sm font-semibold text-cyan-900">
-                  {isAppointment ? 'Preferred time' : isBill ? 'Payment method' : 'Next step'}
-                  <select className="mt-2 h-11 w-full rounded-xl border border-cyan-200 bg-cyan-50/50 px-3 text-sm font-normal text-cyan-900">
-                    <option>{isAppointment ? 'Tomorrow · 10:30' : isBill ? 'Demo card' : 'Continue'}</option>
-                  </select>
-                </label>
+                {options.diet.entries.map((entry) => (
+                  <div key={entry.meal} className="flex items-center justify-between rounded-xl border border-cyan-100 px-4 py-3">
+                    <span className="font-semibold text-cyan-900">{entry.meal}</span>
+                    <span className="max-w-[65%] text-right text-sm text-cyan-700">{entry.items}</span>
+                  </div>
+                ))}
               </div>
-              <Button variant="primary" className="w-full" onClick={onComplete}>
-                Confirm {action.toLowerCase()}
-              </Button>
-            </div>
+            ) : (
+              <p className="text-sm text-cyan-700">Your care team has not set a diet plan yet.</p>
+            )
+          ) : nothingToDo ? (
+            <p className="rounded-xl bg-cyan-50 px-4 py-3 text-sm text-cyan-800">
+              {isMedicine ? 'Every prescribed medicine has already been ordered.' : isBill ? 'You have no outstanding invoices.' : 'No tests are bookable right now.'}
+            </p>
           ) : (
-            <div className="space-y-4">
-              <label className="block text-sm font-semibold text-cyan-900">
-                {isUpload ? 'Choose a report file' : isBot ? 'Your question' : 'Details'}
-                {isUpload ? (
-                  <input
-                    type="file"
-                    required
-                    onChange={(event) => onChange(event.target.files?.[0]?.name ?? '')}
-                    className="mt-2 block w-full rounded-xl border border-cyan-200 bg-cyan-50/50 p-3 text-sm text-cyan-700"
-                  />
-                ) : (
-                  <textarea value={value} onChange={(event) => onChange(event.target.value)} placeholder={isBot ? 'What would you like help with?' : 'Add a note for your request'} className="mt-2 min-h-24 w-full rounded-xl border border-cyan-200 bg-cyan-50/50 p-3 text-sm font-normal text-cyan-900 outline-none focus:border-cyan-500" />
-                )}
-              </label>
-              <Button variant="primary" className="w-full" onClick={onComplete} disabled={isUpload && !value}>
-                Confirm {action.toLowerCase()}
+            <form onSubmit={submit} className="space-y-4">
+              {isAppointment ? (
+                <>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label className="text-sm font-semibold text-cyan-900">
+                      Department
+                      <select
+                        name="department"
+                        defaultValue={options.departments.includes(options.defaultDepartment) ? options.defaultDepartment : undefined}
+                        className={selectClass}
+                      >
+                        {options.departments.map((department) => (
+                          <option key={department}>{department}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="text-sm font-semibold text-cyan-900">
+                      Date
+                      <input name="date" type="date" required min={todayKey()} defaultValue={dateKey(1)} className={selectClass} />
+                    </label>
+                  </div>
+                  <label className="block text-sm font-semibold text-cyan-900">
+                    Preferred time
+                    <select name="time" required className={selectClass}>
+                      {options.appointmentSlots.map((slot) => (
+                        <option key={slot} value={slot}>{formatTime(slot)}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block text-sm font-semibold text-cyan-900">
+                    Reason for visit
+                    <input name="reason" required maxLength={300} placeholder="e.g. Review my glucose readings" className={selectClass} />
+                  </label>
+                </>
+              ) : isLab ? (
+                <label className="block text-sm font-semibold text-cyan-900">
+                  Test
+                  <select name="test" className={selectClass}>
+                    {options.tests.map((test) => (
+                      <option key={test.value} value={test.value}>{test.label}</option>
+                    ))}
+                  </select>
+                </label>
+              ) : isMedicine ? (
+                <label className="block text-sm font-semibold text-cyan-900">
+                  Medicine
+                  <select name="medicine" className={selectClass}>
+                    {options.medicines.map((medicine) => (
+                      <option key={medicine.value} value={medicine.value}>{medicine.label}</option>
+                    ))}
+                  </select>
+                </label>
+              ) : isBill ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="text-sm font-semibold text-cyan-900">
+                    Invoice
+                    <select name="invoice" className={selectClass}>
+                      {options.invoices.map((invoice) => (
+                        <option key={invoice.value} value={invoice.value}>{invoice.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="text-sm font-semibold text-cyan-900">
+                    Payment method
+                    <select name="method" required className={selectClass}>
+                      {options.paymentMethods.map((method) => (
+                        <option key={method}>{method}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+              ) : (
+                <label className="block text-sm font-semibold text-cyan-900">
+                  {isUpload ? 'Choose a report file' : 'Details'}
+                  {isUpload ? (
+                    <>
+                      <input
+                        name="file"
+                        type="file"
+                        required
+                        className="mt-2 block w-full rounded-xl border border-cyan-200 bg-cyan-50/50 p-3 text-sm text-cyan-700"
+                      />
+                      <textarea name="note" maxLength={500} placeholder="Optional note for your care team" className="mt-3 min-h-20 w-full rounded-xl border border-cyan-200 bg-cyan-50/50 p-3 text-sm font-normal text-cyan-900 outline-none focus:border-cyan-500" />
+                    </>
+                  ) : (
+                    <textarea name="message" required placeholder="Add a note for your request" className="mt-2 min-h-24 w-full rounded-xl border border-cyan-200 bg-cyan-50/50 p-3 text-sm font-normal text-cyan-900 outline-none focus:border-cyan-500" />
+                  )}
+                </label>
+              )}
+              <Button type="submit" variant="primary" className="w-full" disabled={busy}>
+                {busy ? 'Saving…' : `Confirm ${action.toLowerCase()}`}
               </Button>
-            </div>
+            </form>
           )}
         </div>
       </div>
