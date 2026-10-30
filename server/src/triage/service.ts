@@ -1,12 +1,15 @@
 import { config } from '../config.js'
 import { ClaudeTriageModel } from './claude.js'
+import { GemmaTriageModel } from './gemma.js'
 import { GeminiTriageModel } from './gemini.js'
 import { rulesOnlyAdvice, screen } from './rules.js'
 import { URGENCIES, moreUrgent, type Assessment, type OldcartsAnswers, type PatientContext, type TriageModel, type Urgency } from './types.js'
 
 function configuredModel(): TriageModel | null {
   if (!config.TRIAGE_AI) return null
-  return config.TRIAGE_PROVIDER === 'claude' ? new ClaudeTriageModel() : new GeminiTriageModel()
+  if (config.TRIAGE_PROVIDER === 'claude') return new ClaudeTriageModel()
+  if (config.TRIAGE_PROVIDER === 'gemma') return new GemmaTriageModel()
+  return new GeminiTriageModel()
 }
 
 let model: TriageModel | null = configuredModel()

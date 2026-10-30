@@ -28,12 +28,18 @@ const schema = z.object({
   /** Use an LLM for symptom-check assessments. Off = deterministic safety rules only. */
   TRIAGE_AI: bool.default('true'),
   /** Which model provider assesses symptom checks. */
-  TRIAGE_PROVIDER: z.enum(['gemini', 'claude']).default('gemini'),
+  TRIAGE_PROVIDER: z.enum(['gemini', 'claude', 'gemma']).default('gemini'),
   GEMINI_MODEL: z.string().default('gemini-flash-latest'),
   /** Optional Gemini thinking level; leave unset to use the model's default. */
   GEMINI_THINKING_LEVEL: z.enum(['MINIMAL', 'LOW', 'MEDIUM', 'HIGH']).optional(),
   CLAUDE_MODEL: z.string().default('claude-opus-5-5'),
   CLAUDE_EFFORT: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).default('high'),
+  /** Local Gemma 3 FastAPI base URL (exposes POST /v1/chat). */
+  GEMMA_BASE_URL: z.string().url().default('http://127.0.0.1:8000'),
+  /** Display name stored on assessments when using the local Gemma provider. */
+  GEMMA_MODEL: z.string().default('gemma-3-12b'),
+  /** Bearer token required by the local Gemma API. */
+  GEMMA_API_KEY: z.string().optional(),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 })
 

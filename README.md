@@ -250,15 +250,15 @@ symptoms. The API then works in three layers (`server/src/triage/`):
    stiff neck, bleeding in pregnancy, very high severity, recent critical vitals, and fever in
    infants. Patterns match whole words and ignore negated mentions ("no chest pain"). The
    result is a **floor**: the model can raise the urgency but never lower it.
-2. **LLM assessment: Gemini by default (`gemini.ts`), or Claude (`claude.ts`) with
-   `TRIAGE_PROVIDER=claude`.** One request with a JSON-schema-constrained response, using the
-   same prompt and schema for both providers (`prompt.ts`). It returns urgency (emergency,
-   urgent, soon, routine, self-care), one department from the clinic's open departments, a
-   clinician-facing OLDCARTS summary, things to rule out, red flags, and plain-language advice.
-   The output is validated against a zod schema. Blocked, truncated or refused responses count
-   as failures. The model receives age, sex, conditions, allergies and latest vitals, and
-   **never names, MRNs or phone numbers**. The patient's answers are passed as delimited data,
-   not instructions.
+2. **LLM assessment.** Gemini (`gemini.ts`), Claude (`claude.ts`), or the local Gemma 3
+   FastAPI (`gemma.ts`, `POST /v1/chat` on `http://127.0.0.1:8000`) via `TRIAGE_PROVIDER`.
+   One request with a JSON response, using the same prompt and schema for every provider
+   (`prompt.ts`). It returns urgency (emergency, urgent, soon, routine, self-care), one
+   department from the clinic's open departments, a clinician-facing OLDCARTS summary, things
+   to rule out, red flags, and plain-language advice. The output is validated against a zod
+   schema. Blocked, truncated or refused responses count as failures. The model receives age,
+   sex, conditions, allergies and latest vitals, and **never names, MRNs or phone numbers**.
+   The patient's answers are passed as delimited data, not instructions.
 3. **Fallback.** If the model is disabled, unconfigured, refuses or fails, the check still
    completes on the safety rules alone, with urgency never below "routine", and is marked
    "safety rules only".
@@ -268,12 +268,14 @@ setting) with a call button. Emergency and urgent checks notify doctors. Patient
 clinician summary or the "rule out" list. Each check is saved, audited, and can be marked
 reviewed by a doctor, which the patient sees live.
 
-Configure it with `TRIAGE_AI` and `TRIAGE_PROVIDER` (`gemini` or `claude`). For Gemini, set
-`GEMINI_API_KEY` (or `GOOGLE_API_KEY`), `GEMINI_MODEL` (default `gemini-flash-latest`) and,
-optionally, `GEMINI_THINKING_LEVEL`. For Claude, set `ANTHROPIC_API_KEY`, `CLAUDE_MODEL` and
-`CLAUDE_EFFORT`. The endpoint is rate-limited to 10 checks per
-minute per client. Tests replace the model with a fake (`setTriageModel`) and never call the
-network.
+Configure it with `TRIAGE_AI` and `TRIAGE_PROVIDER` (`gemini`, `claude`, or `gemma`). For
+Gemini, set `GEMINI_API_KEY` (or `GOOGLE_API_KEY`), `GEMINI_MODEL` (default
+`gemini-flash-latest`) and, optionally, `GEMINI_THINKING_LEVEL`. For Claude, set
+`ANTHROPIC_API_KEY`, `CLAUDE_MODEL` and `CLAUDE_EFFORT`. For the local Gemma API, set
+`TRIAGE_PROVIDER=gemma`, `GEMMA_BASE_URL` (default `http://127.0.0.1:8000`), and
+`GEMMA_API_KEY` (Bearer token for `POST /v1/chat`). The endpoint is rate-limited to 10 checks
+per minute per client. Tests replace the model with a fake (`setTriageModel`) and never call
+the network.
 
 ## Health tips
 
@@ -409,6 +411,11 @@ See `server/.env.example`.
 | `COOKIE_SECURE` | `true` in production | Marks cookies `Secure` |
 | `DEMO_MODE` | `false` | Shows demo accounts and enables `POST /demo/reset` |
 | `CLOCK_START_AT` | unset | Pins the clinical clock's starting instant |
+| `TRIAGE_AI` | `true` | Use an LLM for symptom-check assessments |
+| `TRIAGE_PROVIDER` | `gemini` | `gemini`, `claude`, or `gemma` (local Gemma 3 FastAPI) |
+| `GEMMA_BASE_URL` | `http://127.0.0.1:8000` | Base URL for `TRIAGE_PROVIDER=gemma` |
+| `GEMMA_MODEL` | `gemma-3-12b` | Display name stored on AI assessments |
+| `GEMMA_API_KEY` | unset | Bearer token required by `POST /v1/chat` |
 | `LOG_LEVEL` | `info` | Pino log level. Authorization headers and cookies are redacted. |
 
 The web app reads `VITE_API_URL` (optional) to call an API on another origin. By default it
